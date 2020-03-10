@@ -44,28 +44,46 @@ pub fn get_index_edge(index: usize) -> Edge {
     else if in_right_edge && in_top_edge {
         Edge::TopRightCorner
     }
+    else if in_left_edge && in_bottom_edge {
+        Edge::BottomLeftCorner
+    }
+    else if in_right_edge && in_bottom_edge {
+        Edge::BottomRightCorner
+    }
     else if in_left_edge {
         Edge::Left
-    } else if in_right_edge {
+    } 
+    else if in_right_edge {
         Edge::Right
-    } else if in_bottom_edge {
+    } 
+    else if in_bottom_edge {
         Edge::Bottom
-    } else if in_top_edge {
+    } 
+    else if in_top_edge {
         Edge::Top
-    } else {
+    } 
+    else {
         Edge::None
     }
 }
 
 pub fn valid_move(direction: &Direction, index: usize) -> bool {
+    if get_index_edge(index) == Edge::None {
+	return true;
+    }
+
     let invalid_left_move = get_index_edge(index) == Edge::Left && direction == &Direction::Left;
-    let invalid_right_move = get_index_edge(index) == Edge::Right;
-    let invalid_bottom_move = get_index_edge(index) == Edge::Bottom;
-    let invalid_top_move = get_index_edge(index) == Edge::Top;
+    let invalid_right_move = get_index_edge(index) == Edge::Right && direction == &Direction::Right;
+    let invalid_bottom_move = get_index_edge(index) == Edge::Bottom && direction == &Direction::Down;
+    let invalid_top_move = get_index_edge(index) == Edge::Top && direction == &Direction::Up;
 
-	//TODO: add diagonal moves
+    let invalid_top_left_move = get_index_edge(index) == Edge::TopLeftCorner && (direction == &Direction::Left || direction == &Direction::Up);
+    let invalid_top_right_move = get_index_edge(index) == Edge::TopRightCorner && (direction == &Direction::Right || direction == &Direction::Up);
+    let invalid_bottom_left_move = get_index_edge(index) == Edge::BottomLeftCorner && (direction == &Direction::Left || direction == &Direction::Down);
+    let invalid_bottom_right_move = get_index_edge(index) == Edge::BottomRightCorner && (direction == &Direction::Right || direction == &Direction::Down);
 
-    !(invalid_left_move || invalid_right_move || invalid_bottom_move || invalid_top_move)
+    !(invalid_left_move || invalid_right_move || invalid_bottom_move || invalid_top_move ||
+      invalid_top_left_move || invalid_top_right_move || invalid_bottom_left_move ||invalid_bottom_right_move)
 }
 
 pub fn get_move_index(direction: &Direction, index: usize) -> usize {
