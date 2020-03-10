@@ -1,230 +1,10 @@
 use quicksilver::prelude::*;
 
 use std::collections::HashMap;
-use rand::Rng;
-use std::cmp;
+//use rand::Rng;
+//use std::cmp;
 
-static MAP_WIDTH: u32 = 40;
-static MAP_HEIGHT: u32 = 32;
-static DIRECTIONS: [&'static str; 4] = ["U", "D", "L", "R"];
-
-#[derive(PartialEq)]
-enum Direction {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-#[derive(PartialEq)]
-enum Edge {
-    Left,
-    Right,
-    Top,
-    Bottom,
-    TopLeftCorner,
-    TopRightCorner,
-    BottomLeftCorner,
-    BottomRightCorner,
-    None,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct Tile {
-    pos: Vector,
-    glyph: char,
-    color: Color,
-}
-
-/*
-fn count_surrounding_tiles(map: Vec<Tile>, width: usize, height: usize, index: usize) -> usize {
-    
-}
-*/
-
-fn get_index_edge(index: usize) -> Edge {
-    let in_left_edge: bool = index < MAP_HEIGHT as usize;
-    let in_right_edge: bool = index > ((MAP_WIDTH * MAP_HEIGHT) - MAP_HEIGHT) as usize;
-    let in_bottom_edge: bool = index % MAP_HEIGHT as usize == 0;
-    let in_top_edge: bool = index % (MAP_HEIGHT - 1) as usize == 0;
-
-    if in_left_edge && in_top_edge {
-        Edge::TopLeftCorner
-    }
-    else if in_right_edge && in_top_edge {
-        Edge::TopRightCorner
-    }
-    else if in_left_edge {
-        Edge::Left
-    } else if in_right_edge {
-        Edge::Right
-    } else if in_bottom_edge {
-        Edge::Bottom
-    } else if in_top_edge {
-        Edge::Top
-    } else {
-        Edge::None
-    }
-}
-
-fn valid_move(direction: Direction, index: usize) -> bool {
-    let invalid_left_move = get_index_edge(index) == Edge::Left && direction == Direction::Left;
-    let invalid_right_move = get_index_edge(index) == Edge::Right;
-    let invalid_bottom_move = get_index_edge(index) == Edge::Bottom;
-    let invalid_top_move = get_index_edge(index) == Edge::Top;
-
-    invalid_left_move || invalid_right_move || invalid_bottom_move || invalid_top_move
-}
-
-fn get_move_index(direction: Direction, index: usize) -> usize {
-    if !valid_move(direction, index)
-    {
-        index
-    } else {
-        match direction {
-            Direction::Up => index + 1,
-            Direction::Down => index - 1,
-            Direction::Left => index - MAP_WIDTH as usize,
-            Direction::Right => index + MAP_WIDTH as usize,
-            _ => panic!("Unknown direction")
-        }
-    } 
-}
-
-fn count_surrounding_tiles(index: usize, glyph_type: char) {
-    let left_index: usize = get_move_index(Direction::Left, index);
-    let right_index: usize = get_move_index(Direction::Right, index);
-    let top_index: usize = get_move_index(Direction::Up, index);
-    let bottom_index: usize = get_move_index(Direction::Down, index);
-
-    let top_left_diagonal_index = get_move_index(Direction::Left, top_index);
-    let top_right_diagonal_index = get_move_index(Direction::Right, top_index);
-    let bottom_left_diagonal_index = get_move_index(Direction::Left, bottom_index);
-    let bottom_right_diagonal_index = get_move_index(Direction::Right, bottom_index);
-
-    //TODO initialise
-    //let index_vector = Vec::with_capacity(8) {left_index};
-
-
-}
-
-fn generate_map(size: Vector) -> Vec<Tile> {
-    let width = size.x as usize;
-    let height = size.y as usize;
-    let mut map = Vec::with_capacity(width * height);
-
-    let mut rng = rand::thread_rng();
-
-    for x in 0..width {
-        for y in 0..height {
-            let mut tile = Tile {
-                pos: Vector::new(x as f32, y as f32),
-                glyph: '.',
-                color: Color::BLACK,
-            };
-
-            let random_number: u32 = rng.gen_range(0, 100);
-
-            
-            if x == 0 || x == width - 1 {
-                tile.glyph = '|';
-            }
-            else if y == 0 {
-                tile.glyph = '_';
-            }
-            
-            if random_number < 45 {
-                tile.glyph = '#';
-            }
-
-            map.push(tile);
-        }
-    }
-
-    let number_loops: u16 = 1;
-
-    println!("Map size: {}", map.len() as i16);
-
-    for _loop in 0..number_loops {
-        for i in 0..map.len() {
-
-
-
-            if number_blocks/square_size >= 0.5 {
-                map[i].glyph = '#';
-            }
-            else {
-                map[i].glyph = '.';
-            }
-        }
-    }
-
-    /*
-    let number_loops: u16 = 1;
-
-    println!("Map size: {}", map.len() as i16);
-
-    for _loop in 0..number_loops {
-        for i in 0..map.len() {
-
-            let above_lower = cmp::max((i - height - 1) as i16, 0) as usize;
-            let above_upper = cmp::max((i - height + 1) as i16, 0) as usize;
-
-            //println!("above_lower: {}", above_lower);
-            //println!("above_upper: {}", above_upper);
-
-            let middle_lower = cmp::max((i - 1) as i16, 0) as usize;
-            let middle_upper = cmp::min((i + 1) as i16, (map.len() - 1) as i16) as usize;
-
-            //println!("middle_lower: {}", middle_lower);
-            //println!("middle_upper: {}", middle_upper);
-
-            let below_lower = cmp::min((i + height - 1) as i16, (map.len() - 1) as i16) as usize;
-            let below_upper = cmp::min((i + height + 1) as i16, (map.len() - 1) as i16) as usize;
-
-            //println!("upper_lower: {}", upper_lower);
-            //println!("upper_upper: {}", upper_upper);
-
-            let three_above = &map[above_lower..above_upper + 1];
-            let three_middle = &map[middle_lower..middle_upper + 1];
-            let three_below = &map[below_lower..below_upper + 1];
-
-            println!("three_above: {}", three_above.len());
-            //println!("three_middle: {}", three_middle.len());
-            //println!("three_below: {}", three_below.len());
-
-            let mut square_size: f32 = 0.0;
-            let mut number_blocks: f32 = 0.0;
-
-            println!("This glyph: {}", map[i].glyph);
-
-            for vector_obj in vec![three_above, three_middle, three_below] {
-                for tile in vector_obj {
-                    square_size += 1.0;
-                    println!("Glyph: {}", tile.glyph);
-
-                    if tile.glyph == '#' {
-                        number_blocks += 1.0;
-                    }
-                }
-            }
-
-            /*
-            if number_blocks/square_size >= 0.5 {
-                map[i].glyph = '#';
-            }
-            else {
-                map[i].glyph = '.';
-            }
-            */
-
-            println!("Fraction of blocks: {}", number_blocks/square_size);
-        }
-    }
-    */
-
-    map
-}
+pub mod map;
 
 #[derive(Clone, Debug, PartialEq)]
 struct Entity {
@@ -274,7 +54,7 @@ struct Game {
     square_font_info: Asset<Image>,
     inventory: Asset<Image>,
     map_size: Vector,
-    map: Vec<Tile>,
+    map: Vec<map::Tile>,
     entities: Vec<Entity>,
     player_id: usize,
     tileset: Asset<HashMap<char, Image>>,
@@ -324,7 +104,7 @@ impl State for Game {
         let map_size = Vector::new(40, 32);
         let camera_window = Vector::new(10, 8);
 
-        let map = generate_map(map_size);
+        let map = map::generate_map(map_size);
         let mut entities = generate_entities();
         let player_id = entities.len();
         entities.push(Entity {
@@ -437,10 +217,10 @@ impl State for Game {
         tileset.execute(|tileset| {
             for tile in map.iter() {
 
-                if (tile.pos.x < player.pos.x - camera_window.x ||
+                if tile.pos.x < player.pos.x - camera_window.x ||
                     tile.pos.x > player.pos.x + camera_window.x ||
                     tile.pos.y < player.pos.y - camera_window.y ||
-                    tile.pos.y > player.pos.y + camera_window.y) {
+                    tile.pos.y > player.pos.y + camera_window.y {
                     continue;
                 }
 
@@ -464,10 +244,10 @@ impl State for Game {
 
         tileset.execute(|tileset| {
             for entity in entities.iter() {
-                if (entity.pos.x < player.pos.x - camera_window.x ||
+                if entity.pos.x < player.pos.x - camera_window.x ||
                     entity.pos.x > player.pos.x + camera_window.x ||
                     entity.pos.y < player.pos.y - camera_window.y ||
-                    entity.pos.y > player.pos.y + camera_window.y) {
+                    entity.pos.y > player.pos.y + camera_window.y {
                     continue;
                 }
 
