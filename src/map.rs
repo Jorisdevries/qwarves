@@ -1,10 +1,10 @@
 use quicksilver::prelude::*;
 use rand::Rng;
 
-static MAP_WIDTH: u32 = 40;
-static MAP_HEIGHT: u32 = 32;
+pub static MAP_WIDTH: u32 = 40;
+pub static MAP_HEIGHT: u32 = 32;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum Direction {
     Up,
     Down,
@@ -12,7 +12,7 @@ pub enum Direction {
     Right,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum Edge {
     Left,
     Right,
@@ -34,9 +34,9 @@ pub struct Tile {
 
 pub fn get_index_edge(index: usize) -> Edge {
     let in_left_edge: bool = index < MAP_HEIGHT as usize;
-    let in_right_edge: bool = index > ((MAP_WIDTH * MAP_HEIGHT) - MAP_HEIGHT) as usize;
-    let in_bottom_edge: bool = index % MAP_HEIGHT as usize == 0;
-    let in_top_edge: bool = index % (MAP_HEIGHT - 1) as usize == 0;
+    let in_right_edge: bool = index > ((MAP_WIDTH * MAP_HEIGHT) - MAP_HEIGHT - 1) as usize;
+    let in_bottom_edge: bool = index == 0 || index % MAP_HEIGHT as usize == 0;
+    let in_top_edge: bool = index != 0 && ((index + 1) % MAP_HEIGHT as usize) as usize == 0;
 
     if in_left_edge && in_top_edge {
         Edge::TopLeftCorner
@@ -69,7 +69,7 @@ pub fn get_index_edge(index: usize) -> Edge {
 
 pub fn valid_move(direction: &Direction, index: usize) -> bool {
     if get_index_edge(index) == Edge::None {
-	return true;
+	    return true;
     }
 
     let invalid_left_move = get_index_edge(index) == Edge::Left && direction == &Direction::Left;
@@ -94,8 +94,8 @@ pub fn get_move_index(direction: &Direction, index: usize) -> usize {
         match direction {
             Direction::Up => index + 1,
             Direction::Down => index - 1,
-            Direction::Left => index - MAP_WIDTH as usize,
-            Direction::Right => index + MAP_WIDTH as usize
+            Direction::Left => index - MAP_HEIGHT as usize,
+            Direction::Right => index + MAP_HEIGHT as usize
         }
     } 
 }
@@ -111,9 +111,9 @@ pub fn surrounding_tiles_fraction(map: &Vec<Tile>, index: usize, glyph_type: cha
     let bottom_left_diagonal_index = get_move_index(&Direction::Left, bottom_index);
     let bottom_right_diagonal_index = get_move_index(&Direction::Right, bottom_index);
 
-    let mut index_vector = vec![left_index, right_index, top_index, bottom_index, 
-			    top_left_diagonal_index, top_right_diagonal_index,
-			    bottom_left_diagonal_index, bottom_right_diagonal_index]; 
+    let mut index_vector = vec![left_index, right_index, top_index, 
+                                bottom_index, top_left_diagonal_index, top_right_diagonal_index,
+			                    bottom_left_diagonal_index, bottom_right_diagonal_index]; 
 
     index_vector.sort();
     index_vector.dedup();
@@ -121,9 +121,9 @@ pub fn surrounding_tiles_fraction(map: &Vec<Tile>, index: usize, glyph_type: cha
     let mut glyph_counter: usize = 0;
 
     for i in index_vector.iter() {
-	if map[*i].glyph == glyph_type {
-	    glyph_counter += 1;
-	}
+        if map[*i].glyph == glyph_type {
+            glyph_counter += 1;
+        }
     }
 
     glyph_counter as f32/index_vector.len() as f32
@@ -145,7 +145,6 @@ pub fn generate_map(size: Vector) -> Vec<Tile> {
             };
 
             let random_number: u32 = rng.gen_range(0, 100);
-
             
             if x == 0 || x == width - 1 {
                 tile.glyph = '|';

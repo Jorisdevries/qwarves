@@ -101,7 +101,7 @@ impl State for Game {
             )
         }));
 
-        let map_size = Vector::new(40, 32);
+        let map_size = Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT);
         let camera_window = Vector::new(10, 8);
 
         let map = map::generate_map(map_size);
