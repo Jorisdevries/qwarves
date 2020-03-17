@@ -32,11 +32,18 @@ pub struct Tile {
     pub color: Color,
 }
 
+#[derive(Debug)]
+pub struct TileNeighbourhood {
+    number_filled: usize,
+    number_empty: usize,
+    size: usize,
+}
+
 pub fn get_index_edge(index: usize) -> Edge {
     let in_left_edge: bool = index < MAP_HEIGHT as usize;
     let in_right_edge: bool = index > ((MAP_WIDTH * MAP_HEIGHT) - MAP_HEIGHT - 1) as usize;
-    let in_bottom_edge: bool = index == 0 || index % MAP_HEIGHT as usize == 0;
-    let in_top_edge: bool = index != 0 && ((index + 1) % MAP_HEIGHT as usize) as usize == 0;
+    let in_top_edge: bool = index == 0 || index % MAP_HEIGHT as usize == 0;
+    let in_bottom_edge: bool = index != 0 && ((index + 1) % MAP_HEIGHT as usize) as usize == 0;
 
     if in_left_edge && in_top_edge {
         Edge::TopLeftCorner
@@ -92,15 +99,15 @@ pub fn get_move_index(direction: &Direction, index: usize) -> usize {
         index
     } else {
         match direction {
-            Direction::Up => index + 1,
-            Direction::Down => index - 1,
+            Direction::Up => index - 1,
+            Direction::Down => index + 1,
             Direction::Left => index - MAP_HEIGHT as usize,
             Direction::Right => index + MAP_HEIGHT as usize
         }
     } 
 }
 
-pub fn surrounding_tiles_fraction(map: &Vec<Tile>, index: usize, glyph_type: char) -> f32 {
+pub fn get_tile_neighbourhood(map: &Vec<Tile>, index: usize, glyph_type: char) -> TileNeighbourhood {
     let left_index: usize = get_move_index(&Direction::Left, index);
     let right_index: usize = get_move_index(&Direction::Right, index);
     let top_index: usize = get_move_index(&Direction::Up, index);
@@ -118,22 +125,34 @@ pub fn surrounding_tiles_fraction(map: &Vec<Tile>, index: usize, glyph_type: cha
     index_vector.sort();
     index_vector.dedup();
 
-    let mut glyph_counter: usize = 0;
+    let (mut number_filled, mut number_empty, mut n_size): (usize, usize, usize) = (0, 0, index_vector.len());
 
     for i in index_vector.iter() {
+        if *i == index {
+            n_size -= 1;
+            continue;
+        }
+
+        //println!("> index {} has glyph {}", i, map[*i].glyph);
         if map[*i].glyph == glyph_type {
-            glyph_counter += 1;
+            number_filled += 1;
+        } else {
+            number_empty += 1; 
         }
     }
 
-    glyph_counter as f32/index_vector.len() as f32
+    TileNeighbourhood {
+        number_filled: number_filled,
+        number_empty: number_empty,
+        size: n_size,
+    }
 }
 
 pub fn generate_map(size: Vector) -> Vec<Tile> {
     let width = size.x as usize;
     let height = size.y as usize;
+    
     let mut map = Vec::with_capacity(width * height);
-
     let mut rng = rand::thread_rng();
 
     for x in 0..width {
@@ -144,37 +163,51 @@ pub fn generate_map(size: Vector) -> Vec<Tile> {
                 color: Color::BLACK,
             };
 
-            let random_number: u32 = rng.gen_range(0, 100);
+            let random_number: u32 = rng.gen_range(1, 100);
             
+            if random_number <= 40 {
+                tile.glyph = '#';
+            }
+
+            /*
             if x == 0 || x == width - 1 {
                 tile.glyph = '|';
             }
             else if y == 0 {
                 tile.glyph = '_';
             }
-            
-            if random_number < 45 {
-                tile.glyph = '#';
-            }
+            */
 
             map.push(tile);
         }
     }
 
-    let number_loops: u16 = 1;
-
-    println!("Map size: {}", map.len() as i16);
+    let number_loops: u16 = 7;
 
     for _loop in 0..number_loops {
-        for i in 0..map.len() {
-	    let fill_fraction: f32 = surrounding_tiles_fraction(&map, i, '#');
+        let mut indices_to_fill = Vec::<usize>::new();
+        let mut indices_to_empty = Vec::<usize>::new();
 
-	    if fill_fraction >= 0.5 {
-                map[i].glyph = '#';
-            }
-            else {
-                map[i].glyph = '.';
-            }
+        for i in 0..map.len() {
+            let neighbourhood: TileNeighbourhood = get_tile_neighbourhood(&map, i, '#');
+            //println!("Tile with index {} and glyph {} has neighbourhood {:?}", i, map[i].glyph, neighbourhood);
+
+            if (map[i].glyph == '#' && neighbourhood.number_filled >= 4)
+                || (map[i].glyph == '.' && neighbourhood.number_filled >= 5)  
+                || (_loop <= 4 && map[i].glyph == '.' && neighbourhood.number_filled <= 0)  
+                || get_index_edge(i) != Edge::None { 
+               indices_to_fill.push(i); 
+            } else {
+                indices_to_empty.push(i);
+            } 
+        }
+
+        for i in indices_to_fill.iter() {
+            map[*i].glyph = '#';
+        }
+
+        for i in indices_to_empty.iter() {
+            map[*i].glyph = '.';
         }
     }
 
