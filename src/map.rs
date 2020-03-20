@@ -3,6 +3,7 @@ use rand::Rng;
 
 pub static MAP_WIDTH: u32 = 40;
 pub static MAP_HEIGHT: u32 = 32;
+pub static TILE_HEALTH: f32 = 5.0;
 
 #[derive(PartialEq, Debug)]
 pub enum Direction {
@@ -30,6 +31,7 @@ pub struct Tile {
     pub pos: Vector,
     pub glyph: char,
     pub color: Color,
+    pub health: f32,
 }
 
 #[derive(Debug)]
@@ -148,6 +150,11 @@ pub fn get_tile_neighbourhood(map: &Vec<Tile>, index: usize, glyph_type: char) -
     }
 }
 
+pub fn position_to_index(x_coordinate: f32, y_coordinate: f32) -> usize {
+    let index: usize = (x_coordinate as usize * MAP_HEIGHT as usize) + (y_coordinate as usize);
+    index
+}
+
 pub fn generate_map(size: Vector) -> Vec<Tile> {
     let width = size.x as usize;
     let height = size.y as usize;
@@ -161,22 +168,15 @@ pub fn generate_map(size: Vector) -> Vec<Tile> {
                 pos: Vector::new(x as f32, y as f32),
                 glyph: '.',
                 color: Color::BLACK,
+                health: 0.0
             };
 
             let random_number: u32 = rng.gen_range(1, 100);
             
             if random_number <= 40 {
                 tile.glyph = '#';
+                tile.health = TILE_HEALTH;
             }
-
-            /*
-            if x == 0 || x == width - 1 {
-                tile.glyph = '|';
-            }
-            else if y == 0 {
-                tile.glyph = '_';
-            }
-            */
 
             map.push(tile);
         }
@@ -204,10 +204,12 @@ pub fn generate_map(size: Vector) -> Vec<Tile> {
 
         for i in indices_to_fill.iter() {
             map[*i].glyph = '#';
+            map[*i].health = TILE_HEALTH;
         }
 
         for i in indices_to_empty.iter() {
             map[*i].glyph = '.';
+            map[*i].health = 0.0;
         }
     }
 

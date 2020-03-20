@@ -6,6 +6,9 @@ use std::collections::HashMap;
 
 pub mod map;
 
+static HALF_CAMERA_WIDTH: i32 = 18;
+static HALF_CAMERA_HEIGHT: i32 = 12;
+
 #[derive(Clone, Debug, PartialEq)]
 struct Entity {
     pos: Vector,
@@ -62,13 +65,20 @@ struct Game {
     camera_window: Vector,
 }
 
-struct Item {
-    name: String,
-}
+fn test_collision(map: &mut Vec<map::Tile> , new_x_position: f32, new_y_position: f32) -> bool {
+    let new_index: usize = map::position_to_index(new_x_position, new_y_position);
+    let collision_tile: &mut map::Tile = &mut map[new_index];
+    let perform_move: bool = collision_tile.health <= 0.0;
 
-struct Inventory {
-    size: i32,
-    contents: Vec<Item>,
+    if collision_tile.health > 0.0 {
+        collision_tile.health -= 1.0;
+    }
+
+    if collision_tile.health <= 0.0 {
+        collision_tile.glyph = '.';
+    }
+
+    return perform_move;    
 }
 
 impl State for Game {
@@ -102,7 +112,7 @@ impl State for Game {
         }));
 
         let map_size = Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT);
-        let camera_window = Vector::new(10, 8);
+        let camera_window = Vector::new(HALF_CAMERA_WIDTH, HALF_CAMERA_HEIGHT);
 
         let map = map::generate_map(map_size);
         let mut entities = generate_entities();
@@ -146,22 +156,46 @@ impl State for Game {
         })
     }
 
+    //TO DO
+    // change map orientation so that up means index += 1 and y += 1
+    // map coordinate to map index function
+    // use get_move index to get tile to move to
+    // if damageable tile or entity calculate hp change
+    // unify key presses and directions somehow
+
     /// Process keyboard and mouse, update the game state
     fn update(&mut self, window: &mut Window) -> Result<()> {
         use ButtonState::*;
 
         let player = &mut self.entities[self.player_id];
-        if window.keyboard()[Key::Left] == Pressed {
-            player.pos.x -= 1.0;
+
+        if window.keyboard()[Key::Left] == Pressed && player.pos.x > 0.0 {
+            let perform_move = test_collision(&mut self.map, player.pos.x - 1.0, player.pos.y);
+
+            if perform_move {
+                player.pos.x -= 1.0;
+            }
         }
-        if window.keyboard()[Key::Right] == Pressed {
-            player.pos.x += 1.0;
+        if window.keyboard()[Key::Right] == Pressed && player.pos.x < (map::MAP_WIDTH - 1) as f32 {
+            let perform_move = test_collision(&mut self.map, player.pos.x + 1.0, player.pos.y);
+
+            if perform_move {
+                player.pos.x += 1.0;
+            }
         }
-        if window.keyboard()[Key::Up] == Pressed {
-            player.pos.y -= 1.0;
+        if window.keyboard()[Key::Up] == Pressed && player.pos.y >= 0.0 {
+            let perform_move = test_collision(&mut self.map, player.pos.x, player.pos.y - 1.0);
+
+            if perform_move {
+                player.pos.y -= 1.0;
+            }
         }
-        if window.keyboard()[Key::Down] == Pressed {
-            player.pos.y += 1.0;
+        if window.keyboard()[Key::Down] == Pressed && player.pos.y < (map::MAP_HEIGHT - 1) as f32 {
+            let perform_move = test_collision(&mut self.map, player.pos.x, player.pos.y + 1.0);
+
+            if perform_move {
+                player.pos.y += 1.0;
+            }
         }
         if window.keyboard()[Key::Escape].is_down() {
             window.close();
@@ -313,5 +347,5 @@ fn main() {
         //scale: quicksilver::graphics::ImageScaleStrategy::Blur,
         ..Default::default()
     };
-    run::<Game>("Quicksilver Roguelike", Vector::new(800, 600), settings);
+    run::<Game>("Quicksilver Roguelike", Vector::new(1200, 800), settings);
 }
