@@ -6,6 +6,9 @@ use std::cmp;
 
 pub mod map;
 
+static WINDOW_WIDTH: i32 = 1200;
+static WINDOW_HEIGHT: i32 = 800;
+
 static HALF_CAMERA_WIDTH: i32 = 18;
 static HALF_CAMERA_HEIGHT: i32 = 12;
 
@@ -110,7 +113,7 @@ fn render_text(window: &mut Window, text: &'static str, x_pos: i32, y_pos: i32) 
     Ok(())
 }
 
-fn render_bar(window: &mut Window, colour: Color, origin: Vector, width: f32, height: f32) -> Result<()> {
+fn render_bar(window: &mut Window, colour: Color, current_value: f32, origin: Vector, width: f32, height: f32) -> Result<()> {
     // Full health
     window.draw(
         &Rectangle::new(origin, (width, height)),
@@ -119,7 +122,7 @@ fn render_bar(window: &mut Window, colour: Color, origin: Vector, width: f32, he
 
     // Current health
     window.draw(
-        &Rectangle::new(origin, (width, height)),
+        &Rectangle::new(origin, (current_value, height)),
         Col(colour),
     );
 
@@ -316,6 +319,8 @@ impl State for Game {
         let player = &self.entities[self.player_id];
         let camera_window = &self.camera_window;
 
+        let map_size_px = self.map_size.times(tile_size_px);
+
         tileset.execute(|tileset| {
             for tile in map.iter() {
 
@@ -332,15 +337,11 @@ impl State for Game {
                 let px_pos = offset_px + camera_origin.times(tile_size_px);
                 // outside of x or y margin range
                 if px_pos.x < offset_px.x ||
-                    px_pos.x > 1200 as f32 - offset_px.x ||
+                    px_pos.x > map_size_px.x - offset_px.x ||
                     px_pos.y < offset_px.y ||
-                    px_pos.y > 800 as f32 - offset_px.y {
+                    px_pos.y > map_size_px.y - offset_px.y {
                     continue;
                 }
-
-                let mapped_x = tile.pos.x - (player.pos.x - camera_window.x);
-                let mapped_y = tile.pos.y - (player.pos.y - camera_window.y);
-                let mapped_pos = Vector::new(mapped_x, mapped_y);
 
                 if let Some(image) = tileset.get(&tile.glyph) {
                     let pos_px = camera_origin.times(tile_size_px);
@@ -353,11 +354,6 @@ impl State for Game {
             Ok(())
         })?;
 
-        // Draw entities
-        //let (tileset, entities) = (&mut self.tileset, &self.entities);
-
-        //TO DO: do not move camera if you can see the edge of the map
-
         tileset.execute(|tileset| {
             for entity in entities.iter() {
 
@@ -369,10 +365,6 @@ impl State for Game {
                     entity.pos.y > camera_origin.y + camera_window.y {
                     continue;
                 }
-
-                let mapped_x = entity.pos.x - (player.pos.x - camera_window.x);
-                let mapped_y = entity.pos.y - (player.pos.y - camera_window.y);
-                let mapped_pos = Vector::new(mapped_x, mapped_y);
 
                 if let Some(image) = tileset.get(&entity.glyph) {
                     let pos_px = offset_px + camera_origin.times(tile_size_px);
@@ -390,12 +382,11 @@ impl State for Game {
         let current_health_width_px =
             (player.hp as f32 / player.max_hp as f32) * full_health_width_px;
 
-        let map_size_px = self.map_size.times(tile_size_px);
         let health_bar_pos_px = offset_px + Vector::new(map_size_px.x, 0.0);
         let mana_bar_pos_px = offset_px + Vector::new(map_size_px.x, -30.0);
 
-        render_bar(window, Color::RED, health_bar_pos_px, full_health_width_px, tile_size_px.y)?;
-        render_bar(window, Color::BLUE, mana_bar_pos_px, full_health_width_px, tile_size_px.y)?;
+        render_bar(window, Color::RED, current_health_width_px, health_bar_pos_px, full_health_width_px, tile_size_px.y)?;
+        render_bar(window, Color::BLUE, current_health_width_px, mana_bar_pos_px, full_health_width_px, tile_size_px.y)?;
 
         /*
         // Full health
@@ -438,5 +429,5 @@ fn main() {
         //scale: quicksilver::graphics::ImageScaleStrategy::Blur,
         ..Default::default()
     };
-    run::<Game>("Quicksilver Roguelike", Vector::new(1200, 800), settings);
+    run::<Game>("Qwarves", Vector::new(WINDOW_WIDTH, WINDOW_HEIGHT), settings);
 }
