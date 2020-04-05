@@ -2,7 +2,7 @@ use quicksilver::prelude::*;
 
 use std::collections::HashMap;
 //use rand::Rng;
-//use std::cmp;
+use std::cmp;
 
 pub mod map;
 
@@ -16,6 +16,13 @@ struct Entity {
     color: Color,
     hp: i32,
     max_hp: i32,
+}
+
+impl Entity {
+    fn move_pos(&mut self, delta_x: f32, delta_y: f32) {
+            self.pos.x += delta_x;
+            self.pos.y += delta_y;
+    }
 }
 
 fn generate_entities() -> Vec<Entity> {
@@ -72,6 +79,7 @@ fn test_collision(map: &mut Vec<map::Tile> , new_x_position: f32, new_y_position
 
     if collision_tile.health > 0.0 {
         collision_tile.health -= 1.0;
+        collision_tile.glyph = '*';
     }
 
     if collision_tile.health <= 0.0 {
@@ -79,6 +87,69 @@ fn test_collision(map: &mut Vec<map::Tile> , new_x_position: f32, new_y_position
     }
 
     return perform_move;    
+}
+
+fn render_text(window: &mut Window, text: &'static str, x_pos: i32, y_pos: i32) -> Result<()> {
+    let mut test_draw = Asset::new(Font::load("Cascadia.ttf").and_then(move |font| {
+        font.render(
+            text,
+            &FontStyle::new(20.0, Color::BLACK),
+        )
+    }));
+
+    test_draw.execute(|image| {
+        window.draw(
+            &image
+                .area()
+                .translate((x_pos, y_pos)),
+            Img(&image),
+        );
+        Ok(())
+    })?;
+
+    Ok(())
+}
+
+fn render_bar(window: &mut Window, colour: Color, origin: Vector, width: f32, height: f32) -> Result<()> {
+    // Full health
+    window.draw(
+        &Rectangle::new(origin, (width, height)),
+        Col(colour.with_alpha(0.5)),
+    );
+
+    // Current health
+    window.draw(
+        &Rectangle::new(origin, (width, height)),
+        Col(colour),
+    );
+
+    Ok(())
+}
+
+fn get_camera_origin(player_position: Vector, object_position: Vector, camera_window: Vector, map_size: Vector) -> Vector {
+
+    let mut mapped_x = object_position.x - (player_position.x - camera_window.x);
+    let mut mapped_y = object_position.y - (player_position.y - camera_window.y);
+
+    if player_position.x <= camera_window.x {
+        mapped_x = object_position.x;
+    }
+
+    if player_position.x >= map_size.x - camera_window.x {
+        mapped_x = object_position.x - ((map_size.x - camera_window.x) - camera_window.x); 
+    }
+
+    if player_position.y <= camera_window.y {
+        mapped_y = object_position.y;
+    }
+
+    if player_position.y >= map_size.y - camera_window.y {
+        mapped_y = object_position.y - ((map_size.y - camera_window.y) - camera_window.y); 
+    }
+
+    let mapped_pos = Vector::new(mapped_x, mapped_y);
+
+    mapped_pos
 }
 
 impl State for Game {
@@ -126,7 +197,7 @@ impl State for Game {
         });
 
         let font_square = "Square.ttf";
-        let game_glyphs = "#@g.%|_";
+        let game_glyphs = "#@g.%|_o*";
         let tile_size_px = Vector::new(24, 24);
         let tileset = Asset::new(Font::load(font_square).and_then(move |text| {
             let tiles = text
@@ -156,13 +227,6 @@ impl State for Game {
         })
     }
 
-    //TO DO
-    // change map orientation so that up means index += 1 and y += 1
-    // map coordinate to map index function
-    // use get_move index to get tile to move to
-    // if damageable tile or entity calculate hp change
-    // unify key presses and directions somehow
-
     /// Process keyboard and mouse, update the game state
     fn update(&mut self, window: &mut Window) -> Result<()> {
         use ButtonState::*;
@@ -183,7 +247,7 @@ impl State for Game {
                 player.pos.x += 1.0;
             }
         }
-        if window.keyboard()[Key::Up] == Pressed && player.pos.y >= 0.0 {
+        if window.keyboard()[Key::Up] == Pressed && player.pos.y > 0.0 {
             let perform_move = test_collision(&mut self.map, player.pos.x, player.pos.y - 1.0);
 
             if perform_move {
@@ -203,6 +267,7 @@ impl State for Game {
         Ok(())
     }
 
+
     /// Draw stuff on the screen
     fn draw(&mut self, window: &mut Window) -> Result<()> {
         window.clear(Color::WHITE)?;
@@ -217,6 +282,9 @@ impl State for Game {
             );
             Ok(())
         })?;
+
+        render_text(window, "From function!", 2, window.screen_size().y as i32 - 90)?;
+        render_text(window, "From function 2!", 2, window.screen_size().y as i32 - 120)?;
 
         // Draw the cascadia font credits
         self.cascadia_font_info.execute(|image| {
@@ -251,10 +319,22 @@ impl State for Game {
         tileset.execute(|tileset| {
             for tile in map.iter() {
 
-                if tile.pos.x < player.pos.x - camera_window.x ||
-                    tile.pos.x > player.pos.x + camera_window.x ||
-                    tile.pos.y < player.pos.y - camera_window.y ||
-                    tile.pos.y > player.pos.y + camera_window.y {
+                let camera_origin = get_camera_origin(player.pos, tile.pos, *camera_window, Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT));
+
+                // outside of camera range
+                if tile.pos.x < camera_origin.x - camera_window.x ||
+                    tile.pos.x > camera_origin.x + camera_window.x ||
+                    tile.pos.y < camera_origin.y - camera_window.y ||
+                    tile.pos.y > camera_origin.y + camera_window.y {
+                    continue;
+                }
+
+                let px_pos = offset_px + camera_origin.times(tile_size_px);
+                // outside of x or y margin range
+                if px_pos.x < offset_px.x ||
+                    px_pos.x > 1200 as f32 - offset_px.x ||
+                    px_pos.y < offset_px.y ||
+                    px_pos.y > 800 as f32 - offset_px.y {
                     continue;
                 }
 
@@ -263,7 +343,7 @@ impl State for Game {
                 let mapped_pos = Vector::new(mapped_x, mapped_y);
 
                 if let Some(image) = tileset.get(&tile.glyph) {
-                    let pos_px = mapped_pos.times(tile_size_px);
+                    let pos_px = camera_origin.times(tile_size_px);
                     window.draw(
                         &Rectangle::new(offset_px + pos_px, image.area().size()),
                         Blended(&image, tile.color),
@@ -276,12 +356,17 @@ impl State for Game {
         // Draw entities
         //let (tileset, entities) = (&mut self.tileset, &self.entities);
 
+        //TO DO: do not move camera if you can see the edge of the map
+
         tileset.execute(|tileset| {
             for entity in entities.iter() {
-                if entity.pos.x < player.pos.x - camera_window.x ||
-                    entity.pos.x > player.pos.x + camera_window.x ||
-                    entity.pos.y < player.pos.y - camera_window.y ||
-                    entity.pos.y > player.pos.y + camera_window.y {
+
+                let camera_origin = get_camera_origin(player.pos, entity.pos, *camera_window, Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT));
+
+                if entity.pos.x < camera_origin.x - camera_window.x ||
+                    entity.pos.x > camera_origin.x + camera_window.x ||
+                    entity.pos.y < camera_origin.y - camera_window.y ||
+                    entity.pos.y > camera_origin.y + camera_window.y {
                     continue;
                 }
 
@@ -290,7 +375,7 @@ impl State for Game {
                 let mapped_pos = Vector::new(mapped_x, mapped_y);
 
                 if let Some(image) = tileset.get(&entity.glyph) {
-                    let pos_px = offset_px + mapped_pos.times(tile_size_px);
+                    let pos_px = offset_px + camera_origin.times(tile_size_px);
                     window.draw(
                         &Rectangle::new(pos_px, image.area().size()),
                         Blended(&image, entity.color),
@@ -307,7 +392,12 @@ impl State for Game {
 
         let map_size_px = self.map_size.times(tile_size_px);
         let health_bar_pos_px = offset_px + Vector::new(map_size_px.x, 0.0);
+        let mana_bar_pos_px = offset_px + Vector::new(map_size_px.x, -30.0);
 
+        render_bar(window, Color::RED, health_bar_pos_px, full_health_width_px, tile_size_px.y)?;
+        render_bar(window, Color::BLUE, mana_bar_pos_px, full_health_width_px, tile_size_px.y)?;
+
+        /*
         // Full health
         window.draw(
             &Rectangle::new(health_bar_pos_px, (full_health_width_px, tile_size_px.y)),
@@ -319,6 +409,7 @@ impl State for Game {
             &Rectangle::new(health_bar_pos_px, (current_health_width_px, tile_size_px.y)),
             Col(Color::RED),
         );
+        */
 
         self.inventory.execute(|image| {
             window.draw(

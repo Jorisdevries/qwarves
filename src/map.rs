@@ -3,7 +3,7 @@ use rand::Rng;
 
 pub static MAP_WIDTH: u32 = 40;
 pub static MAP_HEIGHT: u32 = 32;
-pub static TILE_HEALTH: f32 = 5.0;
+pub static TILE_HEALTH: f32 = 1.0;
 
 #[derive(PartialEq, Debug)]
 pub enum Direction {
