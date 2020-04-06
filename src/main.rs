@@ -2,15 +2,18 @@ use quicksilver::prelude::*;
 
 use std::collections::HashMap;
 //use rand::Rng;
-use std::cmp;
+//use std::cmp;
 
 pub mod map;
 
-static WINDOW_WIDTH: i32 = 1200;
-static WINDOW_HEIGHT: i32 = 800;
+static TILE_EDGE_PIXELS: i32 = 24;
+static WINDOW_WIDTH_TILES: i32 = 50;
+static WINDOW_HEIGHT_TILES: i32 = 28;
 
-static HALF_CAMERA_WIDTH: i32 = 18;
-static HALF_CAMERA_HEIGHT: i32 = 12;
+static LEFT_OFFSET_TILES: i32 = 4;
+static RIGHT_OFFSET_TILES: i32 = 4;
+static TOP_OFFSET_TILES: i32 = 2;
+static BOTTOM_OFFSET_TILES: i32 = 2;
 
 #[derive(Clone, Debug, PartialEq)]
 struct Entity {
@@ -62,9 +65,6 @@ fn generate_entities() -> Vec<Entity> {
 }
 
 struct Game {
-    title: Asset<Image>,
-    cascadia_font_info: Asset<Image>,
-    square_font_info: Asset<Image>,
     inventory: Asset<Image>,
     map_size: Vector,
     map: Vec<map::Tile>,
@@ -72,7 +72,6 @@ struct Game {
     player_id: usize,
     tileset: Asset<HashMap<char, Image>>,
     tile_size_px: Vector,
-    camera_window: Vector,
 }
 
 fn test_collision(map: &mut Vec<map::Tile> , new_x_position: f32, new_y_position: f32) -> bool {
@@ -92,11 +91,11 @@ fn test_collision(map: &mut Vec<map::Tile> , new_x_position: f32, new_y_position
     return perform_move;    
 }
 
-fn render_text(window: &mut Window, text: &'static str, x_pos: i32, y_pos: i32) -> Result<()> {
+fn render_text(window: &mut Window, text: &'static str, x_pos: i32, y_pos: i32, font_size: f32) -> Result<()> {
     let mut test_draw = Asset::new(Font::load("Cascadia.ttf").and_then(move |font| {
         font.render(
             text,
-            &FontStyle::new(20.0, Color::BLACK),
+            &FontStyle::new(font_size, Color::BLACK),
         )
     }));
 
@@ -129,54 +128,50 @@ fn render_bar(window: &mut Window, colour: Color, current_value: f32, origin: Ve
     Ok(())
 }
 
-fn get_camera_origin(player_position: Vector, object_position: Vector, camera_window: Vector, map_size: Vector) -> Vector {
+fn camera_translate(player_position: Vector, object_position: Vector, map_size: Vector) -> Vector {
+    let window_half_width = (WINDOW_WIDTH_TILES - LEFT_OFFSET_TILES - RIGHT_OFFSET_TILES) / 2;
+    let window_half_height = (WINDOW_HEIGHT_TILES - TOP_OFFSET_TILES - BOTTOM_OFFSET_TILES) / 2;
+    
+    let mut translate_x = window_half_width as f32 - player_position.x; 
+    let mut translate_y = window_half_height as f32 - player_position.y; 
 
-    let mut mapped_x = object_position.x - (player_position.x - camera_window.x);
-    let mut mapped_y = object_position.y - (player_position.y - camera_window.y);
-
-    if player_position.x <= camera_window.x {
-        mapped_x = object_position.x;
+    if player_position.x <= window_half_width as f32 {
+        translate_x = 0.0;
     }
 
-    if player_position.x >= map_size.x - camera_window.x {
-        mapped_x = object_position.x - ((map_size.x - camera_window.x) - camera_window.x); 
+    if player_position.x >= map_size.x - window_half_width as f32 {
+        translate_x = window_half_width as f32 - (map_size.x - window_half_width as f32);
+    } 
+
+    if player_position.y <= window_half_height as f32 {
+        translate_y = 0.0;
     }
 
-    if player_position.y <= camera_window.y {
-        mapped_y = object_position.y;
+    if player_position.y >= map_size.y - window_half_height as f32 {
+        translate_y = window_half_height as f32 - (map_size.y - window_half_height as f32);
+    } 
+
+    let result = Vector::new(object_position.x + translate_x, object_position.y + translate_y); 
+    result
+}
+
+fn should_render(mapped_position: Vector) -> bool {
+
+    // outside of x or y margin range
+    if mapped_position.x < 0.0 ||
+    mapped_position.x > (WINDOW_WIDTH_TILES - LEFT_OFFSET_TILES - RIGHT_OFFSET_TILES + 1) as f32 ||
+    mapped_position.y < 0.0 ||
+    mapped_position.y > (WINDOW_HEIGHT_TILES - BOTTOM_OFFSET_TILES - TOP_OFFSET_TILES - 1) as f32 {
+        return false;
     }
 
-    if player_position.y >= map_size.y - camera_window.y {
-        mapped_y = object_position.y - ((map_size.y - camera_window.y) - camera_window.y); 
-    }
-
-    let mapped_pos = Vector::new(mapped_x, mapped_y);
-
-    mapped_pos
+    true
 }
 
 impl State for Game {
     /// Load the assets and initialise the game
     fn new() -> Result<Self> {
         let font_cascadia = "Cascadia.ttf";
-
-        let title = Asset::new(Font::load(font_cascadia).and_then(|font| {
-            font.render("Rust Roguelike", &FontStyle::new(72.0, Color::BLACK))
-        }));
-
-        let cascadia_font_info = Asset::new(Font::load(font_cascadia).and_then(|font| {
-            font.render(
-                "Footer 1",
-                &FontStyle::new(20.0, Color::BLACK),
-            )
-        }));
-
-        let square_font_info = Asset::new(Font::load(font_cascadia).and_then(move |font| {
-            font.render(
-                "Footer 2",
-                &FontStyle::new(20.0, Color::BLACK),
-            )
-        }));
 
         let inventory = Asset::new(Font::load(font_cascadia).and_then(move |font| {
             font.render(
@@ -186,7 +181,6 @@ impl State for Game {
         }));
 
         let map_size = Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT);
-        let camera_window = Vector::new(HALF_CAMERA_WIDTH, HALF_CAMERA_HEIGHT);
 
         let map = map::generate_map(map_size);
         let mut entities = generate_entities();
@@ -201,7 +195,7 @@ impl State for Game {
 
         let font_square = "Square.ttf";
         let game_glyphs = "#@g.%|_o*";
-        let tile_size_px = Vector::new(24, 24);
+        let tile_size_px = Vector::new(TILE_EDGE_PIXELS, TILE_EDGE_PIXELS);
         let tileset = Asset::new(Font::load(font_square).and_then(move |text| {
             let tiles = text
                 .render(game_glyphs, &FontStyle::new(tile_size_px.y, Color::WHITE))
@@ -216,9 +210,6 @@ impl State for Game {
         }));
 
         Ok(Self {
-            title,
-            cascadia_font_info,
-            square_font_info,
             inventory,
             map_size,
             map,
@@ -226,7 +217,6 @@ impl State for Game {
             player_id,
             tileset,
             tile_size_px,
-            camera_window,
         })
     }
 
@@ -275,6 +265,7 @@ impl State for Game {
     fn draw(&mut self, window: &mut Window) -> Result<()> {
         window.clear(Color::WHITE)?;
 
+        /*
         // Draw the game title
         self.title.execute(|image| {
             window.draw(
@@ -285,68 +276,34 @@ impl State for Game {
             );
             Ok(())
         })?;
+        */
 
-        render_text(window, "From function!", 2, window.screen_size().y as i32 - 90)?;
-        render_text(window, "From function 2!", 2, window.screen_size().y as i32 - 120)?;
-
-        // Draw the cascadia font credits
-        self.cascadia_font_info.execute(|image| {
-            window.draw(
-                &image
-                    .area()
-                    .translate((2, window.screen_size().y as i32 - 60)),
-                Img(&image),
-            );
-            Ok(())
-        })?;
-
-        // Draw the Square font credits
-        self.square_font_info.execute(|image| {
-            window.draw(
-                &image
-                    .area()
-                    .translate((2, window.screen_size().y as i32 - 30)),
-                Img(&image),
-            );
-            Ok(())
-        })?;
+        render_text(window, "Test title", window.screen_size().x as i32 / 2, 40, 40.0)?;
+        render_text(window, "From function!", 2, window.screen_size().y as i32 - 90, 20.0)?;
+        render_text(window, "From function 2!", 2, window.screen_size().y as i32 - 120, 20.0)?;
 
         let tile_size_px = self.tile_size_px;
-        let offset_px = Vector::new(50, 120);
+        let offset_px = Vector::new((LEFT_OFFSET_TILES - 1) * TILE_EDGE_PIXELS, TOP_OFFSET_TILES * TILE_EDGE_PIXELS);
 
         // Draw the map
         let (tileset, map, entities) = (&mut self.tileset, &self.map, &self.entities);
         let player = &self.entities[self.player_id];
-        let camera_window = &self.camera_window;
 
         let map_size_px = self.map_size.times(tile_size_px);
 
         tileset.execute(|tileset| {
             for tile in map.iter() {
 
-                let camera_origin = get_camera_origin(player.pos, tile.pos, *camera_window, Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT));
+                let mapped_position = camera_translate(player.pos, tile.pos, Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT));
+                let px_pos = offset_px + mapped_position.times(tile_size_px);
 
-                // outside of camera range
-                if tile.pos.x < camera_origin.x - camera_window.x ||
-                    tile.pos.x > camera_origin.x + camera_window.x ||
-                    tile.pos.y < camera_origin.y - camera_window.y ||
-                    tile.pos.y > camera_origin.y + camera_window.y {
-                    continue;
-                }
-
-                let px_pos = offset_px + camera_origin.times(tile_size_px);
-                // outside of x or y margin range
-                if px_pos.x < offset_px.x ||
-                    px_pos.x > map_size_px.x - offset_px.x ||
-                    px_pos.y < offset_px.y ||
-                    px_pos.y > map_size_px.y - offset_px.y {
+                if !should_render(mapped_position) {
                     continue;
                 }
 
                 if let Some(image) = tileset.get(&tile.glyph) {
-                    let pos_px = camera_origin.times(tile_size_px);
                     window.draw(
-                        &Rectangle::new(offset_px + pos_px, image.area().size()),
+                        &Rectangle::new(px_pos, image.area().size()),
                         Blended(&image, tile.color),
                     );
                 }
@@ -357,19 +314,16 @@ impl State for Game {
         tileset.execute(|tileset| {
             for entity in entities.iter() {
 
-                let camera_origin = get_camera_origin(player.pos, entity.pos, *camera_window, Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT));
+                let mapped_position = camera_translate(player.pos, entity.pos, Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT));
+                let px_pos = offset_px + mapped_position.times(tile_size_px);
 
-                if entity.pos.x < camera_origin.x - camera_window.x ||
-                    entity.pos.x > camera_origin.x + camera_window.x ||
-                    entity.pos.y < camera_origin.y - camera_window.y ||
-                    entity.pos.y > camera_origin.y + camera_window.y {
+                if !should_render(mapped_position) {
                     continue;
                 }
 
                 if let Some(image) = tileset.get(&entity.glyph) {
-                    let pos_px = offset_px + camera_origin.times(tile_size_px);
                     window.draw(
-                        &Rectangle::new(pos_px, image.area().size()),
+                        &Rectangle::new(px_pos, image.area().size()),
                         Blended(&image, entity.color),
                     );
                 }
@@ -429,5 +383,5 @@ fn main() {
         //scale: quicksilver::graphics::ImageScaleStrategy::Blur,
         ..Default::default()
     };
-    run::<Game>("Qwarves", Vector::new(WINDOW_WIDTH, WINDOW_HEIGHT), settings);
+    run::<Game>("Qwarves", Vector::new(WINDOW_WIDTH_TILES * TILE_EDGE_PIXELS, WINDOW_HEIGHT_TILES * TILE_EDGE_PIXELS), settings);
 }

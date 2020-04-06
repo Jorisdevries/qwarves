@@ -1,8 +1,8 @@
 use quicksilver::prelude::*;
 use rand::Rng;
 
-pub static MAP_WIDTH: u32 = 40;
-pub static MAP_HEIGHT: u32 = 32;
+pub static MAP_WIDTH: u32 = 60;
+pub static MAP_HEIGHT: u32 = 50;
 pub static TILE_HEALTH: f32 = 1.0;
 
 #[derive(PartialEq, Debug)]
