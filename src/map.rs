@@ -216,3 +216,14 @@ pub fn generate_map(size: Vector) -> Vec<Tile> {
     map
 }
 
+pub fn generate_levels(n_levels: usize, size: Vector) -> Vec<Vec<Tile>> {
+    let mut map = Vec::with_capacity(n_levels);
+
+    for _ in 1..n_levels {
+        let new_level = generate_map(size);
+        map.push(new_level);
+    }
+
+    map
+}
+

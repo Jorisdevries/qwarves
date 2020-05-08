@@ -24,6 +24,10 @@ struct Entity {
     max_hp: i32,
 }
 
+// TO DO:
+// Multiple levels
+// Hero view
+
 impl Entity {
     fn move_pos(&mut self, delta_x: f32, delta_y: f32) {
             self.pos.x += delta_x;
@@ -67,7 +71,9 @@ fn generate_entities() -> Vec<Entity> {
 struct Game {
     inventory: Asset<Image>,
     map_size: Vector,
-    map: Vec<map::Tile>,
+    //map: Vec<map::Tile>,
+    levels: Vec<Vec<map::Tile>>,
+    level_index: usize,
     entities: Vec<Entity>,
     player_id: usize,
     tileset: Asset<HashMap<char, Image>>,
@@ -182,9 +188,13 @@ impl State for Game {
 
         let map_size = Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT);
 
-        let map = map::generate_map(map_size);
+        let mut level_index = 0;
+        let levels = map::generate_levels(5, map_size);
+        //let map = map::generate_map(map_size);
+        //let map = &levels[level_index];
         let mut entities = generate_entities();
         let player_id = entities.len();
+
         entities.push(Entity {
             pos: Vector::new(5, 3),
             glyph: '@',
@@ -212,7 +222,9 @@ impl State for Game {
         Ok(Self {
             inventory,
             map_size,
-            map,
+            //map,
+            levels,
+            level_index,
             entities,
             player_id,
             tileset,
@@ -226,29 +238,33 @@ impl State for Game {
 
         let player = &mut self.entities[self.player_id];
 
+        if window.keyboard()[Key::L] == Pressed {
+            self.level_index += 1; 
+        }
+
         if window.keyboard()[Key::Left] == Pressed && player.pos.x > 0.0 {
-            let perform_move = test_collision(&mut self.map, player.pos.x - 1.0, player.pos.y);
+            let perform_move = test_collision(&mut self.levels[self.level_index], player.pos.x - 1.0, player.pos.y);
 
             if perform_move {
                 player.pos.x -= 1.0;
             }
         }
         if window.keyboard()[Key::Right] == Pressed && player.pos.x < (map::MAP_WIDTH - 1) as f32 {
-            let perform_move = test_collision(&mut self.map, player.pos.x + 1.0, player.pos.y);
+            let perform_move = test_collision(&mut self.levels[self.level_index], player.pos.x + 1.0, player.pos.y);
 
             if perform_move {
                 player.pos.x += 1.0;
             }
         }
         if window.keyboard()[Key::Up] == Pressed && player.pos.y > 0.0 {
-            let perform_move = test_collision(&mut self.map, player.pos.x, player.pos.y - 1.0);
+            let perform_move = test_collision(&mut self.levels[self.level_index], player.pos.x, player.pos.y - 1.0);
 
             if perform_move {
                 player.pos.y -= 1.0;
             }
         }
         if window.keyboard()[Key::Down] == Pressed && player.pos.y < (map::MAP_HEIGHT - 1) as f32 {
-            let perform_move = test_collision(&mut self.map, player.pos.x, player.pos.y + 1.0);
+            let perform_move = test_collision(&mut self.levels[self.level_index], player.pos.x, player.pos.y + 1.0);
 
             if perform_move {
                 player.pos.y += 1.0;
@@ -286,7 +302,7 @@ impl State for Game {
         let offset_px = Vector::new((LEFT_OFFSET_TILES - 1) * TILE_EDGE_PIXELS, TOP_OFFSET_TILES * TILE_EDGE_PIXELS);
 
         // Draw the map
-        let (tileset, map, entities) = (&mut self.tileset, &self.map, &self.entities);
+        let (tileset, map, entities) = (&mut self.tileset, &mut self.levels[self.level_index], &self.entities);
         let player = &self.entities[self.player_id];
 
         let map_size_px = self.map_size.times(tile_size_px);
@@ -375,12 +391,12 @@ fn main() {
     // Otherwise the window resizes to whatever value the OS sets and
     // scales the contents.
     // https://docs.rs/glutin/0.19.0/glutin/dpi/index.html
-    std::env::set_var("WINIT_HIDPI_FACTOR", "1.0");
+    std::env::set_var("WINIT_HIDPI_FACTOR", "2.0");
 
     let settings = Settings {
         // If the graphics do need to be scaled (e.g. using
         // `with_center`), blur them. This looks better with fonts.
-        //scale: quicksilver::graphics::ImageScaleStrategy::Blur,
+        scale: quicksilver::graphics::ImageScaleStrategy::Blur,
         ..Default::default()
     };
     run::<Game>("Qwarves", Vector::new(WINDOW_WIDTH_TILES * TILE_EDGE_PIXELS, WINDOW_HEIGHT_TILES * TILE_EDGE_PIXELS), settings);
