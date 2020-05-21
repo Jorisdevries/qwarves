@@ -18,26 +18,22 @@ static BOTTOM_OFFSET_TILES: i32 = 2;
 
 #[derive(Clone, Debug, PartialEq)]
 enum MoveType {
+    None, //will never move
     Stationary,
     Manual,
     Random,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct MoveSystem<'a> {
-    moving_entity_ids: &'a Vec<usize>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct EntityRegister {
+struct EntityManager {
     current_id: usize,
     entity_list: HashMap<usize, Entity>,
     movables: Vec<usize>,
 }
 
-impl EntityRegister {
-    fn new() -> EntityRegister {
-        EntityRegister {
+impl EntityManager {
+    fn new() -> EntityManager {
+        EntityManager {
             current_id: 1,
             entity_list: HashMap::new(),
             movables: Vec::new(),
@@ -54,9 +50,10 @@ impl EntityRegister {
             move_type,
             id: self.current_id,
         };
+
         self.current_id += 1;
 
-        if new_entity.move_type != MoveType::Stationary {
+        if new_entity.move_type != MoveType::None {
             let moving_id: usize = new_entity.id;
             self.movables.push(moving_id);
         }
@@ -65,17 +62,20 @@ impl EntityRegister {
     }
 
     fn move_entities(&mut self) {
-        for (_, value) in &mut self.entity_list {
-            value.move_pos();
-        }
-    }
-}
+        for id in &self.movables {
+            let entity: &mut Entity = self.entity_list.get_mut(&id).unwrap(); 
 
-impl<'a> MoveSystem<'a> {
-    fn move_entities(self, entity_register: &mut EntityRegister) {
-        for id in self.moving_entity_ids {
-            let entity_borrow: &mut Entity = entity_register.entity_list.get_mut(&id).unwrap(); 
-            entity_borrow.move_pos();
+            match entity.move_type {
+                MoveType::Random => {
+                    let mut rng = rand::thread_rng();
+    
+                    if rng.gen_range(1, 61) == 60 {
+                        entity.pos.x += rng.gen_range(-1, 2) as f32;
+                        entity.pos.y += rng.gen_range(-1, 2) as f32;
+                    }
+                },
+                _ => (),
+            }
         }
     }
 }
@@ -91,30 +91,8 @@ struct Entity {
     id: usize,
 }
 
-// TODO:
-// Level transition ladders 
-// moving entities
-
-impl Entity {
-
-    fn move_pos(&mut self) {
-        match self.move_type {
-            MoveType::Random => {
-                let mut rng = rand::thread_rng();
-
-                if rng.gen_range(1, 60) == 60 {
-                    self.pos.x += rng.gen_range(-1, 1) as f32;
-                    self.pos.y += rng.gen_range(-1, 1) as f32;
-                }
-            },
-            _ => (),
-        }
-            
-    }
-}
-
-fn generate_entities(entity_register: &mut EntityRegister) {
-    entity_register.new_entity(Vector::new(9, 6), 'g', Color::RED, 1, 10, MoveType::Random);
+fn generate_entities(entity_manager: &mut EntityManager) {
+    entity_manager.new_entity(Vector::new(9, 6), 'g', Color::RED, 1, 10, MoveType::Random);
                                 
     /*
     vec![
@@ -160,7 +138,7 @@ struct Game {
     //map: Vec<map::Tile>,
     levels: Vec<Vec<map::Tile>>,
     level_index: usize,
-    entity_register: EntityRegister,
+    entity_manager: EntityManager,
     tileset: Asset<HashMap<char, Image>>,
     tile_size_px: Vector,
 }
@@ -278,13 +256,9 @@ impl State for Game {
         //let map = map::generate_map(map_size);
         //let map = &levels[level_index];
 
-        let mut entity_register = EntityRegister::new();
-        entity_register.new_entity(Vector::new(9, 6), '@', Color::BLACK, 10, 10, MoveType::Manual); //player first
-        generate_entities(&mut entity_register);
-
-        let move_system = MoveSystem {
-            moving_entity_ids: &entity_register.movables
-        };
+        let mut entity_manager = EntityManager::new();
+        entity_manager.new_entity(Vector::new(9, 6), '@', Color::BLACK, 10, 10, MoveType::Manual); //player first
+        generate_entities(&mut entity_manager);
 
         let font_square = "Square.ttf";
         let game_glyphs = "#@g.%|_o*";
@@ -308,7 +282,7 @@ impl State for Game {
             //map,
             levels,
             level_index,
-            entity_register,
+            entity_manager,
             tileset,
             tile_size_px,
         })
@@ -318,7 +292,8 @@ impl State for Game {
     fn update(&mut self, window: &mut Window) -> Result<()> {
         use ButtonState::*;
 
-        let player = &mut self.entity_register.entity_list.get_mut(&1).unwrap();
+        self.entity_manager.move_entities();
+        let player = &mut self.entity_manager.entity_list.get_mut(&1).unwrap();
 
         if window.keyboard()[Key::L] == Pressed {
             self.level_index += 1; 
@@ -385,8 +360,8 @@ impl State for Game {
 
         // Draw the map
         let (tileset, map) = (&mut self.tileset, &mut self.levels[self.level_index]);
-        let entities = & self.entity_register.entity_list.values().collect::<Vec<&Entity>>();
-        let player = &self.entity_register.entity_list.get(&1).unwrap();
+        let entities = & self.entity_manager.entity_list.values().collect::<Vec<&Entity>>();
+        let player = &self.entity_manager.entity_list.get(&1).unwrap();
 
         let map_size_px = self.map_size.times(tile_size_px);
 
