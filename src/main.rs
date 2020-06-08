@@ -3,7 +3,10 @@ use quicksilver::prelude::*;
 use std::collections::HashMap;
 //use rand::seq::SliceRandom; 
 use rand::Rng;
-//use std::cmp;
+use std::cmp;
+
+use specs::prelude::*;
+use specs_derive::Component;
 
 pub mod map;
 
@@ -15,6 +18,63 @@ static LEFT_OFFSET_TILES: i32 = 4;
 static RIGHT_OFFSET_TILES: i32 = 4;
 static TOP_OFFSET_TILES: i32 = 2;
 static BOTTOM_OFFSET_TILES: i32 = 2;
+
+#[derive(Component)]
+struct Position {
+    x: i32,
+    y: i32,
+}
+
+#[derive(Component)]
+struct Renderable {
+    glyph: char,
+    color: Color,
+}
+
+#[derive(Component)]
+struct Player {}
+
+#[derive(Component)]
+struct RandomMover {}
+
+impl<'a> System<'a> for RandomMover {
+    type SystemData = (ReadStorage<'a, RandomMover>, 
+                        WriteStorage<'a, Position>);
+
+    fn run(&mut self, (lefty, mut pos) : Self::SystemData) {
+        for (_lefty,pos) in (&lefty, &mut pos).join() {
+            let mut rng = rand::thread_rng();
+
+            if rng.gen_range(1, 61) == 60 {
+                pos.x += rng.gen_range(-1, 2) as i32;
+                pos.y += rng.gen_range(-1, 2) as i32;
+            }
+        }
+    }
+}
+
+struct Game {
+    inventory: Asset<Image>,
+    map_size: Vector,
+    //map: Vec<map::Tile>,
+    levels: Vec<Vec<map::Tile>>,
+    level_index: usize,
+    entity_manager: EntityManager,
+    tileset: Asset<HashMap<char, Image>>,
+    tile_size_px: Vector,
+    ecs: World
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct Entity {
+    pos: Vector,
+    glyph: char,
+    color: Color,
+    hp: i32,
+    max_hp: i32,
+    move_type: MoveType,
+    id: usize,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 enum MoveType {
@@ -80,19 +140,30 @@ impl EntityManager {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-struct Entity {
-    pos: Vector,
-    glyph: char,
-    color: Color,
-    hp: i32,
-    max_hp: i32,
-    move_type: MoveType,
-    id: usize,
-}
 
-fn generate_entities(entity_manager: &mut EntityManager) {
-    entity_manager.new_entity(Vector::new(9, 6), 'g', Color::RED, 1, 10, MoveType::Random);
+fn generate_entities(ecs: &mut World) {
+    ecs
+    .create_entity()
+    .with(Position { x: 40, y: 25 })
+    .with(Renderable {
+        glyph: '@',
+        color: Color::BLACK,
+    })
+    .with(Player{})
+    .build();
+
+    ecs
+    .create_entity()
+    .with(Position { x: 30, y: 10 })
+    .with(Renderable {
+        glyph: 'g',
+        color: Color::GREEN,
+    })
+    .with(RandomMover{})
+    .build();
+
+
+    //entity_manager.new_entity(Vector::new(9, 6), 'g', Color::RED, 1, 10, MoveType::Random);
                                 
     /*
     vec![
@@ -132,16 +203,6 @@ fn generate_entities(entity_manager: &mut EntityManager) {
     */
 }
 
-struct Game {
-    inventory: Asset<Image>,
-    map_size: Vector,
-    //map: Vec<map::Tile>,
-    levels: Vec<Vec<map::Tile>>,
-    level_index: usize,
-    entity_manager: EntityManager,
-    tileset: Asset<HashMap<char, Image>>,
-    tile_size_px: Vector,
-}
 
 fn test_collision(map: &mut Vec<map::Tile> , new_x_position: f32, new_y_position: f32) -> bool {
     let new_index: usize = map::position_to_index(new_x_position, new_y_position);
@@ -237,6 +298,42 @@ fn should_render(mapped_position: Vector) -> bool {
     true
 }
 
+fn try_move_player(delta_x: i32, delta_y: i32, ecs: &World) {
+    let mut positions = ecs.write_storage::<Position>();
+    let mut players = ecs.write_storage::<Player>();
+
+    for (_player, pos) in (&mut players, &mut positions).join() {
+        pos.x = cmp::min(map::MAP_WIDTH as i32, cmp::max(0, pos.x + delta_x));
+        pos.y = cmp::min(map::MAP_HEIGHT as i32, cmp::max(0, pos.y + delta_y));
+    }
+}
+
+fn player_input(ecs: &World, window: &mut Window) {
+    use ButtonState::*;
+
+    if window.keyboard()[Key::Left] == Pressed {
+        try_move_player(-1, 0, ecs);
+    }
+    if window.keyboard()[Key::Right] == Pressed {
+        try_move_player(1, 0, ecs);
+    }
+    if window.keyboard()[Key::Up] == Pressed {
+        try_move_player(0, -1, ecs);
+    }
+    if window.keyboard()[Key::Down] == Pressed {
+        try_move_player(0, 1, ecs);
+    }
+    if window.keyboard()[Key::Escape].is_down() {
+        window.close();
+    }
+}
+
+fn run_systems(ecs: &mut World) {
+    let mut rw = RandomMover{};
+    rw.run_now(ecs);
+    ecs.maintain();
+}
+
 impl State for Game {
     /// Load the assets and initialise the game
     fn new() -> Result<Self> {
@@ -258,7 +355,6 @@ impl State for Game {
 
         let mut entity_manager = EntityManager::new();
         entity_manager.new_entity(Vector::new(9, 6), '@', Color::BLACK, 10, 10, MoveType::Manual); //player first
-        generate_entities(&mut entity_manager);
 
         let font_square = "Square.ttf";
         let game_glyphs = "#@g.%|_o*";
@@ -276,6 +372,14 @@ impl State for Game {
             Ok(tileset)
         }));
 
+        let mut ecs = World::new();
+        ecs.register::<Position>();
+        ecs.register::<Renderable>();
+        ecs.register::<Player>();
+        ecs.register::<RandomMover>();
+
+        generate_entities(&mut ecs);
+
         Ok(Self {
             inventory,
             map_size,
@@ -285,51 +389,15 @@ impl State for Game {
             entity_manager,
             tileset,
             tile_size_px,
+            ecs,
         })
     }
 
     /// Process keyboard and mouse, update the game state
     fn update(&mut self, window: &mut Window) -> Result<()> {
-        use ButtonState::*;
+        run_systems(&mut self.ecs);
+        player_input(&self.ecs, window);
 
-        self.entity_manager.move_entities();
-        let player = &mut self.entity_manager.entity_list.get_mut(&1).unwrap();
-
-        if window.keyboard()[Key::L] == Pressed {
-            self.level_index += 1; 
-        }
-
-        if window.keyboard()[Key::Left] == Pressed && player.pos.x > 0.0 {
-            let perform_move = test_collision(&mut self.levels[self.level_index], player.pos.x - 1.0, player.pos.y);
-
-            if perform_move {
-                player.pos.x -= 1.0;
-            }
-        }
-        if window.keyboard()[Key::Right] == Pressed && player.pos.x < (map::MAP_WIDTH - 1) as f32 {
-            let perform_move = test_collision(&mut self.levels[self.level_index], player.pos.x + 1.0, player.pos.y);
-
-            if perform_move {
-                player.pos.x += 1.0;
-            }
-        }
-        if window.keyboard()[Key::Up] == Pressed && player.pos.y > 0.0 {
-            let perform_move = test_collision(&mut self.levels[self.level_index], player.pos.x, player.pos.y - 1.0);
-
-            if perform_move {
-                player.pos.y -= 1.0;
-            }
-        }
-        if window.keyboard()[Key::Down] == Pressed && player.pos.y < (map::MAP_HEIGHT - 1) as f32 {
-            let perform_move = test_collision(&mut self.levels[self.level_index], player.pos.x, player.pos.y + 1.0);
-
-            if perform_move {
-                player.pos.y += 1.0;
-            }
-        }
-        if window.keyboard()[Key::Escape].is_down() {
-            window.close();
-        }
         Ok(())
     }
 
@@ -356,19 +424,24 @@ impl State for Game {
         render_text(window, "From function 2!", 2, window.screen_size().y as i32 - 120, 20.0)?;
 
         let tile_size_px = self.tile_size_px;
+        let map_size_px = self.map_size.times(tile_size_px);
         let offset_px = Vector::new((LEFT_OFFSET_TILES - 1) * TILE_EDGE_PIXELS, TOP_OFFSET_TILES * TILE_EDGE_PIXELS);
 
         // Draw the map
         let (tileset, map) = (&mut self.tileset, &mut self.levels[self.level_index]);
-        let entities = & self.entity_manager.entity_list.values().collect::<Vec<&Entity>>();
-        let player = &self.entity_manager.entity_list.get(&1).unwrap();
 
-        let map_size_px = self.map_size.times(tile_size_px);
+        let positions = self.ecs.read_storage::<Position>();
+        let renderables = self.ecs.read_storage::<Renderable>();
+        let players = self.ecs.read_storage::<Player>();
+
+        let mut player_pos: Vector = Vector::new(0, 0);
+        for (pos, _player) in (&positions, &players).join() {
+            player_pos = Vector::new(pos.x, pos.y);
+        }
 
         tileset.execute(|tileset| {
             for tile in map.iter() {
-
-                let mapped_position = camera_translate(player.pos, tile.pos, Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT));
+                let mapped_position = camera_translate(player_pos, tile.pos, Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT));
                 let px_pos = offset_px + mapped_position.times(tile_size_px);
 
                 if !should_render(mapped_position) {
@@ -386,29 +459,28 @@ impl State for Game {
         })?;
 
         tileset.execute(|tileset| {
-            for entity in entities {
-                let ent: &Entity = entity;
-                let mapped_position = camera_translate(player.pos, ent.pos, Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT));
+            for (pos, render) in (&positions, &renderables).join() {
+                let position = Vector::new(pos.x, pos.y);
+                let mapped_position = camera_translate(player_pos, position, Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT));
                 let px_pos = offset_px + mapped_position.times(tile_size_px);
 
                 if !should_render(mapped_position) {
                     continue;
                 }
 
-                if let Some(image) = tileset.get(&ent.glyph) {
+                if let Some(image) = tileset.get(&render.glyph) {
                     window.draw(
                         &Rectangle::new(px_pos, image.area().size()),
-                        Blended(&image, ent.color),
+                        Blended(&image, render.color),
                     );
                 }
             }
+
             Ok(())
         })?;
 
         let full_health_width_px = 100.0;
-        let current_health_width_px =
-            (player.hp as f32 / player.max_hp as f32) * full_health_width_px;
-
+        let current_health_width_px = (50 as f32 / 100 as f32) * full_health_width_px;
         let health_bar_pos_px = offset_px + Vector::new(map_size_px.x, 0.0);
         let mana_bar_pos_px = offset_px + Vector::new(map_size_px.x, -30.0);
 
