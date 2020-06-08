@@ -1,4 +1,5 @@
 use quicksilver::prelude::*;
+use specs::{Builder, Entity, World};
 
 use std::collections::HashMap;
 //use rand::seq::SliceRandom; 
@@ -35,6 +36,9 @@ struct Renderable {
 struct Player {}
 
 #[derive(Component)]
+struct Tile{}
+
+#[derive(Component)]
 struct RandomMover {}
 
 impl<'a> System<'a> for RandomMover {
@@ -59,87 +63,10 @@ struct Game {
     //map: Vec<map::Tile>,
     levels: Vec<Vec<map::Tile>>,
     level_index: usize,
-    entity_manager: EntityManager,
     tileset: Asset<HashMap<char, Image>>,
     tile_size_px: Vector,
     ecs: World
 }
-
-#[derive(Clone, Debug, PartialEq)]
-struct Entity {
-    pos: Vector,
-    glyph: char,
-    color: Color,
-    hp: i32,
-    max_hp: i32,
-    move_type: MoveType,
-    id: usize,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum MoveType {
-    None, //will never move
-    Stationary,
-    Manual,
-    Random,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct EntityManager {
-    current_id: usize,
-    entity_list: HashMap<usize, Entity>,
-    movables: Vec<usize>,
-}
-
-impl EntityManager {
-    fn new() -> EntityManager {
-        EntityManager {
-            current_id: 1,
-            entity_list: HashMap::new(),
-            movables: Vec::new(),
-        }
-    }
-
-    fn new_entity(&mut self, pos: Vector, glyph: char, color: Color, hp: i32, max_hp: i32, move_type: MoveType) {
-        let new_entity = Entity {
-            pos,
-            glyph,
-            color,
-            hp,
-            max_hp,
-            move_type,
-            id: self.current_id,
-        };
-
-        self.current_id += 1;
-
-        if new_entity.move_type != MoveType::None {
-            let moving_id: usize = new_entity.id;
-            self.movables.push(moving_id);
-        }
-
-        self.entity_list.insert(new_entity.id, new_entity);
-    }
-
-    fn move_entities(&mut self) {
-        for id in &self.movables {
-            let entity: &mut Entity = self.entity_list.get_mut(&id).unwrap(); 
-
-            match entity.move_type {
-                MoveType::Random => {
-                    let mut rng = rand::thread_rng();
-    
-                    if rng.gen_range(1, 61) == 60 {
-                        entity.pos.x += rng.gen_range(-1, 2) as f32;
-                        entity.pos.y += rng.gen_range(-1, 2) as f32;
-                    }
-                },
-                _ => (),
-            }
-        }
-    }
-}
-
 
 fn generate_entities(ecs: &mut World) {
     ecs
@@ -161,46 +88,6 @@ fn generate_entities(ecs: &mut World) {
     })
     .with(RandomMover{})
     .build();
-
-
-    //entity_manager.new_entity(Vector::new(9, 6), 'g', Color::RED, 1, 10, MoveType::Random);
-                                
-    /*
-    vec![
-        Entity {
-            pos: Vector::new(9, 6),
-            glyph: 'g',
-            color: Color::RED,
-            hp: 1,
-            max_hp: 1,
-            move_type: MoveType::Random,
-        },
-        Entity {
-            pos: Vector::new(2, 4),
-            glyph: 'g',
-            color: Color::RED,
-            hp: 1,
-            max_hp: 1,
-            move_type: MoveType::Random,
-        },
-        Entity {
-            pos: Vector::new(7, 5),
-            glyph: '%',
-            color: Color::PURPLE,
-            hp: 0,
-            max_hp: 0,
-            move_type: MoveType::Random,
-        },
-        Entity {
-            pos: Vector::new(4, 8),
-            glyph: '%',
-            color: Color::PURPLE,
-            hp: 0,
-            max_hp: 0,
-            move_type: MoveType::Random,
-        },
-    ]
-    */
 }
 
 
@@ -333,6 +220,115 @@ fn run_systems(ecs: &mut World) {
     rw.run_now(ecs);
     ecs.maintain();
 }
+fn generate_tile(ecs: &mut World, glyph: char, pos_x: i32, pos_y: i32) -> Entity {
+    let entity = ecs
+    .create_entity()
+    .with(Position { x: pos_x, y: pos_y})
+    .with(Renderable {
+        glyph: glyph,
+        color: Color::BLACK,
+    })
+    .with(Tile{})
+    .build();
+
+    entity
+}
+
+#[derive(Default)]
+pub struct Map {
+    pub tiles: HashMap<(i32, i32), Entity>,
+}
+
+impl Map {
+    pub fn new() -> Map {
+        Map {
+            tiles: HashMap::new(),
+        }
+    }
+}
+
+fn generate_map_new(ecs: &mut World, size: Vector) -> Map {
+    let width = size.x as usize;
+    let height = size.y as usize;
+    
+    let mut map = Map::new(); 
+    let mut rng = rand::thread_rng();
+
+    for x in 0..width {
+        for y in 0..height {
+            
+            let mut glyph = '.';
+
+            let random_number: u32 = rng.gen_range(1, 100);
+            if random_number <= 45 {
+                glyph = '#';
+            }
+
+            let tile = generate_tile(ecs, glyph, x as i32, y as i32);
+            map.tiles.insert((x as i32, y as i32), tile);
+        }
+    }
+
+    //ecs.insert(map);
+    map
+}
+
+fn count_surrounding(coords: (i32, i32), tile_map: &HashMap<(i32, i32), Entity>, renderables: &ReadStorage<Renderable>) -> i32 {
+    let mut n_surrounding = 0;
+
+    for x in -1..=1 {
+        for y in -1..=1 {
+            if let Some(tile_id) = tile_map.get(&(coords.0 + x, coords.1 + y)) {
+                if renderables.get(*tile_id).is_some() {
+                    if renderables.get(*tile_id).unwrap().glyph == '#' {
+                        n_surrounding +=1 ;
+                    }
+                }
+            }
+        }
+    }
+
+    n_surrounding
+}
+
+fn get_fill_data(ecs: &mut World, tile_map: &HashMap<(i32, i32), Entity>) -> (Vec<(i32, i32)>, Vec<(i32, i32)>) {
+    let mut coordinates_to_fill: Vec<(i32, i32)> = Vec::new();
+    let mut coordinates_to_empty: Vec<(i32, i32)> = Vec::new();
+
+    let positions = ecs.read_storage::<Position>();
+    let renderables = ecs.read_storage::<Renderable>();
+    let tiles = ecs.read_storage::<Tile>();
+
+    for (pos, render, _tile) in (&positions, &renderables, &tiles).join() {
+        let n_solid = count_surrounding((pos.x, pos.y), tile_map, &renderables); 
+
+        if (render.glyph == '#' && n_solid >= 4) || (render.glyph == '.' && n_solid >= 5) { 
+            coordinates_to_fill.push((pos.x, pos.y)); 
+        } else {
+            coordinates_to_empty.push((pos.x, pos.y));
+        } 
+    }
+
+    (coordinates_to_fill, coordinates_to_empty)
+}
+
+fn apply_ca(ecs: &mut World, tile_map: &HashMap<(i32, i32), Entity>) {
+    let fill_info = get_fill_data(ecs, tile_map);
+    let coordinates_to_fill: Vec<(i32, i32)> = fill_info.0;
+    let coordinates_to_empty: Vec<(i32, i32)> = fill_info.1;
+
+    let mut positions = ecs.write_storage::<Position>();
+    let mut renderables = ecs.write_storage::<Renderable>();
+    let mut tiles = ecs.write_storage::<Tile>();
+
+    for (pos, render, _tile) in (&mut positions, &mut renderables, &mut tiles).join() {
+        if coordinates_to_fill.iter().any(|&i| i == (pos.x, pos.y)) {
+            render.glyph = '#';
+        } else if coordinates_to_empty.iter().any(|&i| i == (pos.x, pos.y)) {
+            render.glyph = '.';
+        }
+    }
+}
 
 impl State for Game {
     /// Load the assets and initialise the game
@@ -352,9 +348,6 @@ impl State for Game {
         let levels = map::generate_levels(5, map_size);
         //let map = map::generate_map(map_size);
         //let map = &levels[level_index];
-
-        let mut entity_manager = EntityManager::new();
-        entity_manager.new_entity(Vector::new(9, 6), '@', Color::BLACK, 10, 10, MoveType::Manual); //player first
 
         let font_square = "Square.ttf";
         let game_glyphs = "#@g.%|_o*";
@@ -377,8 +370,14 @@ impl State for Game {
         ecs.register::<Renderable>();
         ecs.register::<Player>();
         ecs.register::<RandomMover>();
+        ecs.register::<Tile>();
 
         generate_entities(&mut ecs);
+        let new_map = generate_map_new(&mut ecs, map_size);
+
+        for _loop in 1..7 {
+            apply_ca(&mut ecs, &new_map.tiles);
+        }
 
         Ok(Self {
             inventory,
@@ -386,7 +385,6 @@ impl State for Game {
             //map,
             levels,
             level_index,
-            entity_manager,
             tileset,
             tile_size_px,
             ecs,
@@ -406,20 +404,7 @@ impl State for Game {
     fn draw(&mut self, window: &mut Window) -> Result<()> {
         window.clear(Color::WHITE)?;
 
-        /*
-        // Draw the game title
-        self.title.execute(|image| {
-            window.draw(
-                &image
-                    .area()
-                    .with_center((window.screen_size().x as i32 / 2, 40)),
-                Img(&image),
-            );
-            Ok(())
-        })?;
-        */
-
-        render_text(window, "Test title", window.screen_size().x as i32 / 2, 40, 40.0)?;
+        render_text(window, "Test title", window.screen_size().x as i32 / 2 - 10, 25, 40.0)?;
         render_text(window, "From function!", 2, window.screen_size().y as i32 - 90, 20.0)?;
         render_text(window, "From function 2!", 2, window.screen_size().y as i32 - 120, 20.0)?;
 
@@ -439,6 +424,7 @@ impl State for Game {
             player_pos = Vector::new(pos.x, pos.y);
         }
 
+        /*
         tileset.execute(|tileset| {
             for tile in map.iter() {
                 let mapped_position = camera_translate(player_pos, tile.pos, Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT));
@@ -457,6 +443,7 @@ impl State for Game {
             }
             Ok(())
         })?;
+        */
 
         tileset.execute(|tileset| {
             for (pos, render) in (&positions, &renderables).join() {
