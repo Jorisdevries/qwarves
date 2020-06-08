@@ -1,13 +1,12 @@
 use quicksilver::prelude::*;
 use specs::{Builder, Entity, World};
+use specs::prelude::*;
+use specs_derive::Component;
 
 use std::collections::HashMap;
 //use rand::seq::SliceRandom; 
 use rand::Rng;
 use std::cmp;
-
-use specs::prelude::*;
-use specs_derive::Component;
 
 pub mod map;
 
@@ -16,7 +15,7 @@ static WINDOW_WIDTH_TILES: i32 = 50;
 static WINDOW_HEIGHT_TILES: i32 = 28;
 
 static LEFT_OFFSET_TILES: i32 = 4;
-static RIGHT_OFFSET_TILES: i32 = 4;
+static RIGHT_OFFSET_TILES: i32 = 8;
 static TOP_OFFSET_TILES: i32 = 2;
 static BOTTOM_OFFSET_TILES: i32 = 2;
 
@@ -156,8 +155,8 @@ fn camera_translate(player_position: Vector, object_position: Vector, map_size: 
         translate_x = 0.0;
     }
 
-    if player_position.x >= map_size.x - window_half_width as f32 {
-        translate_x = window_half_width as f32 - (map_size.x - window_half_width as f32);
+    if player_position.x >= -2.0 + map_size.x - window_half_width as f32 {
+        translate_x = window_half_width as f32 - (-2.0 + map_size.x - window_half_width as f32);
     } 
 
     if player_position.y <= window_half_height as f32 {
@@ -173,7 +172,6 @@ fn camera_translate(player_position: Vector, object_position: Vector, map_size: 
 }
 
 fn should_render(mapped_position: Vector) -> bool {
-
     // outside of x or y margin range
     if mapped_position.x < 0.0 ||
     mapped_position.x > (WINDOW_WIDTH_TILES - LEFT_OFFSET_TILES - RIGHT_OFFSET_TILES + 1) as f32 ||
@@ -409,7 +407,6 @@ impl State for Game {
         render_text(window, "From function 2!", 2, window.screen_size().y as i32 - 120, 20.0)?;
 
         let tile_size_px = self.tile_size_px;
-        let map_size_px = self.map_size.times(tile_size_px);
         let offset_px = Vector::new((LEFT_OFFSET_TILES - 1) * TILE_EDGE_PIXELS, TOP_OFFSET_TILES * TILE_EDGE_PIXELS);
 
         // Draw the map
@@ -468,8 +465,13 @@ impl State for Game {
 
         let full_health_width_px = 100.0;
         let current_health_width_px = (50 as f32 / 100 as f32) * full_health_width_px;
-        let health_bar_pos_px = offset_px + Vector::new(map_size_px.x, 0.0);
-        let mana_bar_pos_px = offset_px + Vector::new(map_size_px.x, -30.0);
+
+        let map_size_px = self.map_size.times(tile_size_px);
+
+        let screen_width_tiles = WINDOW_WIDTH_TILES - RIGHT_OFFSET_TILES - 2;
+
+        let health_bar_pos_px = offset_px + Vector::new(screen_width_tiles * TILE_EDGE_PIXELS, 0.0);
+        let mana_bar_pos_px = offset_px + Vector::new(screen_width_tiles * TILE_EDGE_PIXELS, -30.0);
 
         render_bar(window, Color::RED, current_health_width_px, health_bar_pos_px, full_health_width_px, tile_size_px.y)?;
         render_bar(window, Color::BLUE, current_health_width_px, mana_bar_pos_px, full_health_width_px, tile_size_px.y)?;
