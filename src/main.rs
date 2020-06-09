@@ -1,7 +1,6 @@
 use quicksilver::prelude::*;
-use specs::{Builder, Entity, World};
 use specs::prelude::*;
-use specs_derive::Component;
+use specs::{Builder, World};
 
 use std::collections::HashMap;
 //use rand::seq::SliceRandom; 
@@ -9,6 +8,7 @@ use rand::Rng;
 use std::cmp;
 
 pub mod map;
+pub mod components;
 
 static TILE_EDGE_PIXELS: i32 = 24;
 static WINDOW_WIDTH_TILES: i32 = 50;
@@ -19,30 +19,10 @@ static RIGHT_OFFSET_TILES: i32 = 8;
 static TOP_OFFSET_TILES: i32 = 2;
 static BOTTOM_OFFSET_TILES: i32 = 2;
 
-#[derive(Component)]
-struct Position {
-    x: i32,
-    y: i32,
-}
 
-#[derive(Component)]
-struct Renderable {
-    glyph: char,
-    color: Color,
-}
-
-#[derive(Component)]
-struct Player {}
-
-#[derive(Component)]
-struct Tile{}
-
-#[derive(Component)]
-struct RandomMover {}
-
-impl<'a> System<'a> for RandomMover {
-    type SystemData = (ReadStorage<'a, RandomMover>, 
-                        WriteStorage<'a, Position>);
+impl<'a> System<'a> for components::RandomMover {
+    type SystemData = (ReadStorage<'a, components::RandomMover>, 
+                        WriteStorage<'a, components::Position>);
 
     fn run(&mut self, (lefty, mut pos) : Self::SystemData) {
         for (_lefty,pos) in (&lefty, &mut pos).join() {
@@ -59,9 +39,6 @@ impl<'a> System<'a> for RandomMover {
 struct Game {
     inventory: Asset<Image>,
     map_size: Vector,
-    //map: Vec<map::Tile>,
-    levels: Vec<Vec<map::Tile>>,
-    level_index: usize,
     tileset: Asset<HashMap<char, Image>>,
     tile_size_px: Vector,
     ecs: World
@@ -70,41 +47,23 @@ struct Game {
 fn generate_entities(ecs: &mut World) {
     ecs
     .create_entity()
-    .with(Position { x: 40, y: 25 })
-    .with(Renderable {
+    .with(components::Position { x: 40, y: 25 })
+    .with(components::Renderable {
         glyph: '@',
         color: Color::BLACK,
     })
-    .with(Player{})
+    .with(components::Player{})
     .build();
 
     ecs
     .create_entity()
-    .with(Position { x: 30, y: 10 })
-    .with(Renderable {
+    .with(components::Position { x: 30, y: 10 })
+    .with(components::Renderable {
         glyph: 'g',
         color: Color::GREEN,
     })
-    .with(RandomMover{})
+    .with(components::RandomMover{})
     .build();
-}
-
-
-fn test_collision(map: &mut Vec<map::Tile> , new_x_position: f32, new_y_position: f32) -> bool {
-    let new_index: usize = map::position_to_index(new_x_position, new_y_position);
-    let collision_tile: &mut map::Tile = &mut map[new_index];
-    let perform_move: bool = collision_tile.health <= 0.0;
-
-    if collision_tile.health > 0.0 {
-        collision_tile.health -= 1.0;
-        collision_tile.glyph = '*';
-    }
-
-    if collision_tile.health <= 0.0 {
-        collision_tile.glyph = '.';
-    }
-
-    return perform_move;    
 }
 
 fn render_text(window: &mut Window, text: &'static str, x_pos: i32, y_pos: i32, font_size: f32) -> Result<()> {
@@ -184,8 +143,8 @@ fn should_render(mapped_position: Vector) -> bool {
 }
 
 fn try_move_player(delta_x: i32, delta_y: i32, ecs: &World) {
-    let mut positions = ecs.write_storage::<Position>();
-    let mut players = ecs.write_storage::<Player>();
+    let mut positions = ecs.write_storage::<components::Position>();
+    let mut players = ecs.write_storage::<components::Player>();
 
     for (_player, pos) in (&mut players, &mut positions).join() {
         pos.x = cmp::min(map::MAP_WIDTH as i32, cmp::max(0, pos.x + delta_x));
@@ -214,119 +173,11 @@ fn player_input(ecs: &World, window: &mut Window) {
 }
 
 fn run_systems(ecs: &mut World) {
-    let mut rw = RandomMover{};
+    let mut rw = components::RandomMover{};
     rw.run_now(ecs);
     ecs.maintain();
 }
-fn generate_tile(ecs: &mut World, glyph: char, pos_x: i32, pos_y: i32) -> Entity {
-    let entity = ecs
-    .create_entity()
-    .with(Position { x: pos_x, y: pos_y})
-    .with(Renderable {
-        glyph: glyph,
-        color: Color::BLACK,
-    })
-    .with(Tile{})
-    .build();
 
-    entity
-}
-
-#[derive(Default)]
-pub struct Map {
-    pub tiles: HashMap<(i32, i32), Entity>,
-}
-
-impl Map {
-    pub fn new() -> Map {
-        Map {
-            tiles: HashMap::new(),
-        }
-    }
-}
-
-fn generate_map_new(ecs: &mut World, size: Vector) -> Map {
-    let width = size.x as usize;
-    let height = size.y as usize;
-    
-    let mut map = Map::new(); 
-    let mut rng = rand::thread_rng();
-
-    for x in 0..width {
-        for y in 0..height {
-            
-            let mut glyph = '.';
-
-            let random_number: u32 = rng.gen_range(1, 100);
-            if random_number <= 45 {
-                glyph = '#';
-            }
-
-            let tile = generate_tile(ecs, glyph, x as i32, y as i32);
-            map.tiles.insert((x as i32, y as i32), tile);
-        }
-    }
-
-    //ecs.insert(map);
-    map
-}
-
-fn count_surrounding(coords: (i32, i32), tile_map: &HashMap<(i32, i32), Entity>, renderables: &ReadStorage<Renderable>) -> i32 {
-    let mut n_surrounding = 0;
-
-    for x in -1..=1 {
-        for y in -1..=1 {
-            if let Some(tile_id) = tile_map.get(&(coords.0 + x, coords.1 + y)) {
-                if renderables.get(*tile_id).is_some() {
-                    if renderables.get(*tile_id).unwrap().glyph == '#' {
-                        n_surrounding +=1 ;
-                    }
-                }
-            }
-        }
-    }
-
-    n_surrounding
-}
-
-fn get_fill_data(ecs: &mut World, tile_map: &HashMap<(i32, i32), Entity>) -> (Vec<(i32, i32)>, Vec<(i32, i32)>) {
-    let mut coordinates_to_fill: Vec<(i32, i32)> = Vec::new();
-    let mut coordinates_to_empty: Vec<(i32, i32)> = Vec::new();
-
-    let positions = ecs.read_storage::<Position>();
-    let renderables = ecs.read_storage::<Renderable>();
-    let tiles = ecs.read_storage::<Tile>();
-
-    for (pos, render, _tile) in (&positions, &renderables, &tiles).join() {
-        let n_solid = count_surrounding((pos.x, pos.y), tile_map, &renderables); 
-
-        if (render.glyph == '#' && n_solid >= 4) || (render.glyph == '.' && n_solid >= 5) { 
-            coordinates_to_fill.push((pos.x, pos.y)); 
-        } else {
-            coordinates_to_empty.push((pos.x, pos.y));
-        } 
-    }
-
-    (coordinates_to_fill, coordinates_to_empty)
-}
-
-fn apply_ca(ecs: &mut World, tile_map: &HashMap<(i32, i32), Entity>) {
-    let fill_info = get_fill_data(ecs, tile_map);
-    let coordinates_to_fill: Vec<(i32, i32)> = fill_info.0;
-    let coordinates_to_empty: Vec<(i32, i32)> = fill_info.1;
-
-    let mut positions = ecs.write_storage::<Position>();
-    let mut renderables = ecs.write_storage::<Renderable>();
-    let mut tiles = ecs.write_storage::<Tile>();
-
-    for (pos, render, _tile) in (&mut positions, &mut renderables, &mut tiles).join() {
-        if coordinates_to_fill.iter().any(|&i| i == (pos.x, pos.y)) {
-            render.glyph = '#';
-        } else if coordinates_to_empty.iter().any(|&i| i == (pos.x, pos.y)) {
-            render.glyph = '.';
-        }
-    }
-}
 
 impl State for Game {
     /// Load the assets and initialise the game
@@ -340,12 +191,6 @@ impl State for Game {
             )
         }));
 
-        let map_size = Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT);
-
-        let level_index = 0;
-        let levels = map::generate_levels(5, map_size);
-        //let map = map::generate_map(map_size);
-        //let map = &levels[level_index];
 
         let font_square = "Square.ttf";
         let game_glyphs = "#@g.%|_o*";
@@ -364,25 +209,23 @@ impl State for Game {
         }));
 
         let mut ecs = World::new();
-        ecs.register::<Position>();
-        ecs.register::<Renderable>();
-        ecs.register::<Player>();
-        ecs.register::<RandomMover>();
-        ecs.register::<Tile>();
+        ecs.register::<components::Position>();
+        ecs.register::<components::Renderable>();
+        ecs.register::<components::Player>();
+        ecs.register::<components::RandomMover>();
+        ecs.register::<components::Tile>();
 
         generate_entities(&mut ecs);
-        let new_map = generate_map_new(&mut ecs, map_size);
+        let map_size = Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT);
+        let new_map = map::generate_map_new(&mut ecs, map_size);
 
         for _loop in 1..7 {
-            apply_ca(&mut ecs, &new_map.tiles);
+            map::apply_ca(&mut ecs, &new_map.tiles);
         }
 
         Ok(Self {
             inventory,
             map_size,
-            //map,
-            levels,
-            level_index,
             tileset,
             tile_size_px,
             ecs,
@@ -410,37 +253,16 @@ impl State for Game {
         let offset_px = Vector::new((LEFT_OFFSET_TILES - 1) * TILE_EDGE_PIXELS, TOP_OFFSET_TILES * TILE_EDGE_PIXELS);
 
         // Draw the map
-        let (tileset, map) = (&mut self.tileset, &mut self.levels[self.level_index]);
+        let tileset = &mut self.tileset;
 
-        let positions = self.ecs.read_storage::<Position>();
-        let renderables = self.ecs.read_storage::<Renderable>();
-        let players = self.ecs.read_storage::<Player>();
+        let positions = self.ecs.read_storage::<components::Position>();
+        let renderables = self.ecs.read_storage::<components::Renderable>();
+        let players = self.ecs.read_storage::<components::Player>();
 
         let mut player_pos: Vector = Vector::new(0, 0);
         for (pos, _player) in (&positions, &players).join() {
             player_pos = Vector::new(pos.x, pos.y);
         }
-
-        /*
-        tileset.execute(|tileset| {
-            for tile in map.iter() {
-                let mapped_position = camera_translate(player_pos, tile.pos, Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT));
-                let px_pos = offset_px + mapped_position.times(tile_size_px);
-
-                if !should_render(mapped_position) {
-                    continue;
-                }
-
-                if let Some(image) = tileset.get(&tile.glyph) {
-                    window.draw(
-                        &Rectangle::new(px_pos, image.area().size()),
-                        Blended(&image, tile.color),
-                    );
-                }
-            }
-            Ok(())
-        })?;
-        */
 
         tileset.execute(|tileset| {
             for (pos, render) in (&positions, &renderables).join() {
@@ -466,8 +288,6 @@ impl State for Game {
         let full_health_width_px = 100.0;
         let current_health_width_px = (50 as f32 / 100 as f32) * full_health_width_px;
 
-        let map_size_px = self.map_size.times(tile_size_px);
-
         let screen_width_tiles = WINDOW_WIDTH_TILES - RIGHT_OFFSET_TILES - 2;
 
         let health_bar_pos_px = offset_px + Vector::new(screen_width_tiles * TILE_EDGE_PIXELS, 0.0);
@@ -475,20 +295,6 @@ impl State for Game {
 
         render_bar(window, Color::RED, current_health_width_px, health_bar_pos_px, full_health_width_px, tile_size_px.y)?;
         render_bar(window, Color::BLUE, current_health_width_px, mana_bar_pos_px, full_health_width_px, tile_size_px.y)?;
-
-        /*
-        // Full health
-        window.draw(
-            &Rectangle::new(health_bar_pos_px, (full_health_width_px, tile_size_px.y)),
-            Col(Color::RED.with_alpha(0.5)),
-        );
-
-        // Current health
-        window.draw(
-            &Rectangle::new(health_bar_pos_px, (current_health_width_px, tile_size_px.y)),
-            Col(Color::RED),
-        );
-        */
 
         self.inventory.execute(|image| {
             window.draw(
