@@ -22,4 +22,7 @@ pub struct Player {}
 pub struct Tile{}
 
 #[derive(Component)]
+pub struct Monster {}
+
+#[derive(Component)]
 pub struct RandomMover {}

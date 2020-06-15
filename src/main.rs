@@ -3,12 +3,11 @@ use specs::prelude::*;
 use specs::{Builder, World};
 
 use std::collections::HashMap;
-//use rand::seq::SliceRandom; 
-use rand::Rng;
 use std::cmp;
 
 pub mod map;
 pub mod components;
+pub mod systems;
 
 static TILE_EDGE_PIXELS: i32 = 24;
 static WINDOW_WIDTH_TILES: i32 = 50;
@@ -19,29 +18,16 @@ static RIGHT_OFFSET_TILES: i32 = 8;
 static TOP_OFFSET_TILES: i32 = 2;
 static BOTTOM_OFFSET_TILES: i32 = 2;
 
-
-impl<'a> System<'a> for components::RandomMover {
-    type SystemData = (ReadStorage<'a, components::RandomMover>, 
-                        WriteStorage<'a, components::Position>);
-
-    fn run(&mut self, (lefty, mut pos) : Self::SystemData) {
-        for (_lefty,pos) in (&lefty, &mut pos).join() {
-            let mut rng = rand::thread_rng();
-
-            if rng.gen_range(1, 61) == 60 {
-                pos.x += rng.gen_range(-1, 2) as i32;
-                pos.y += rng.gen_range(-1, 2) as i32;
-            }
-        }
-    }
-}
+#[derive(PartialEq, Copy, Clone)]
+pub enum RunState { Paused, Running }
 
 struct Game {
     inventory: Asset<Image>,
     map_size: Vector,
     tileset: Asset<HashMap<char, Image>>,
     tile_size_px: Vector,
-    ecs: World
+    ecs: World,
+    runstate: RunState
 }
 
 fn generate_entities(ecs: &mut World) {
@@ -63,6 +49,7 @@ fn generate_entities(ecs: &mut World) {
         color: Color::GREEN,
     })
     .with(components::RandomMover{})
+    .with(components::Monster{})
     .build();
 }
 
@@ -152,29 +139,41 @@ fn try_move_player(delta_x: i32, delta_y: i32, ecs: &World) {
     }
 }
 
-fn player_input(ecs: &World, window: &mut Window) {
+fn player_input(game: &mut Game, window: &mut Window) {
     use ButtonState::*;
 
     if window.keyboard()[Key::Left] == Pressed {
-        try_move_player(-1, 0, ecs);
+        try_move_player(-1, 0, &game.ecs);
     }
     if window.keyboard()[Key::Right] == Pressed {
-        try_move_player(1, 0, ecs);
+        try_move_player(1, 0, &game.ecs);
     }
     if window.keyboard()[Key::Up] == Pressed {
-        try_move_player(0, -1, ecs);
+        try_move_player(0, -1, &game.ecs);
     }
     if window.keyboard()[Key::Down] == Pressed {
-        try_move_player(0, 1, ecs);
+        try_move_player(0, 1, &game.ecs);
     }
     if window.keyboard()[Key::Escape].is_down() {
         window.close();
     }
 }
 
+fn register_components(ecs: &mut World) {
+    ecs.register::<components::Position>();
+    ecs.register::<components::Renderable>();
+    ecs.register::<components::Player>();
+    ecs.register::<components::RandomMover>();
+    ecs.register::<components::Tile>();
+    ecs.register::<components::Monster>();
+}
+
 fn run_systems(ecs: &mut World) {
     let mut rw = components::RandomMover{};
     rw.run_now(ecs);
+    let mut mob = systems::MonsterAI{};
+    mob.run_now(ecs);
+
     ecs.maintain();
 }
 
@@ -209,18 +208,15 @@ impl State for Game {
         }));
 
         let mut ecs = World::new();
-        ecs.register::<components::Position>();
-        ecs.register::<components::Renderable>();
-        ecs.register::<components::Player>();
-        ecs.register::<components::RandomMover>();
-        ecs.register::<components::Tile>();
+        register_components(&mut ecs);
 
         generate_entities(&mut ecs);
         let map_size = Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT);
-        let new_map = map::generate_map_new(&mut ecs, map_size);
+        map::generate_map_new(&mut ecs, map_size);
 
-        for _loop in 1..7 {
-            map::apply_ca(&mut ecs, &new_map.tiles);
+        {
+            let new_map = ecs.fetch::<map::Map>();
+            for _loop in 1..7 { map::apply_ca(&ecs, &new_map.tiles); }
         }
 
         Ok(Self {
@@ -229,13 +225,25 @@ impl State for Game {
             tileset,
             tile_size_px,
             ecs,
+            runstate : RunState::Running
         })
     }
 
     /// Process keyboard and mouse, update the game state
     fn update(&mut self, window: &mut Window) -> Result<()> {
-        run_systems(&mut self.ecs);
-        player_input(&self.ecs, window);
+
+        if window.keyboard()[Key::P] == ButtonState::Pressed {
+            if self.runstate == RunState::Running {
+                self.runstate = RunState::Paused; 
+            } else {
+                self.runstate = RunState::Running; 
+            }    
+        }
+
+        if self.runstate == RunState::Running {
+            run_systems(&mut self.ecs);
+            player_input(self, window);
+        }
 
         Ok(())
     }
@@ -245,9 +253,16 @@ impl State for Game {
     fn draw(&mut self, window: &mut Window) -> Result<()> {
         window.clear(Color::WHITE)?;
 
+        let screen_width_tiles = WINDOW_WIDTH_TILES - RIGHT_OFFSET_TILES - 2;
+        let screen_height_tiles = WINDOW_HEIGHT_TILES - BOTTOM_OFFSET_TILES;
+
         render_text(window, "Test title", window.screen_size().x as i32 / 2 - 10, 25, 40.0)?;
         render_text(window, "From function!", 2, window.screen_size().y as i32 - 90, 20.0)?;
         render_text(window, "From function 2!", 2, window.screen_size().y as i32 - 120, 20.0)?;
+
+        if self.runstate == RunState::Paused {
+            render_text(window, "Paused", screen_width_tiles/2 * TILE_EDGE_PIXELS, screen_height_tiles * TILE_EDGE_PIXELS, 20.0)?;
+        }
 
         let tile_size_px = self.tile_size_px;
         let offset_px = Vector::new((LEFT_OFFSET_TILES - 1) * TILE_EDGE_PIXELS, TOP_OFFSET_TILES * TILE_EDGE_PIXELS);
@@ -263,6 +278,8 @@ impl State for Game {
         for (pos, _player) in (&positions, &players).join() {
             player_pos = Vector::new(pos.x, pos.y);
         }
+
+        //println!("{}", player_pos);
 
         tileset.execute(|tileset| {
             for (pos, render) in (&positions, &renderables).join() {
@@ -287,8 +304,6 @@ impl State for Game {
 
         let full_health_width_px = 100.0;
         let current_health_width_px = (50 as f32 / 100 as f32) * full_health_width_px;
-
-        let screen_width_tiles = WINDOW_WIDTH_TILES - RIGHT_OFFSET_TILES - 2;
 
         let health_bar_pos_px = offset_px + Vector::new(screen_width_tiles * TILE_EDGE_PIXELS, 0.0);
         let mana_bar_pos_px = offset_px + Vector::new(screen_width_tiles * TILE_EDGE_PIXELS, -30.0);
@@ -323,5 +338,10 @@ fn main() {
         scale: quicksilver::graphics::ImageScaleStrategy::Blur,
         ..Default::default()
     };
-    run::<Game>("Qwarves", Vector::new(WINDOW_WIDTH_TILES * TILE_EDGE_PIXELS, WINDOW_HEIGHT_TILES * TILE_EDGE_PIXELS), settings);
+
+    
+
+    run::<Game>("Qwarves", 
+                Vector::new(WINDOW_WIDTH_TILES * TILE_EDGE_PIXELS, WINDOW_HEIGHT_TILES * TILE_EDGE_PIXELS), 
+                settings);
 }

@@ -39,7 +39,7 @@ pub fn generate_tile(ecs: &mut World, glyph: char, pos_x: i32, pos_y: i32) -> En
 }
 
 
-pub fn generate_map_new(ecs: &mut World, size: Vector) -> Map {
+pub fn generate_map_new(ecs: &mut World, size: Vector) {
     let width = size.x as usize;
     let height = size.y as usize;
     
@@ -61,8 +61,8 @@ pub fn generate_map_new(ecs: &mut World, size: Vector) -> Map {
         }
     }
 
-    //ecs.insert(map);
-    map
+    ecs.insert(map);
+    //map
 }
 
 pub fn count_surrounding(coords: (i32, i32), tile_map: &HashMap<(i32, i32), Entity>, renderables: &ReadStorage<components::Renderable>) -> i32 {
@@ -73,7 +73,7 @@ pub fn count_surrounding(coords: (i32, i32), tile_map: &HashMap<(i32, i32), Enti
             if let Some(tile_id) = tile_map.get(&(coords.0 + x, coords.1 + y)) {
                 if renderables.get(*tile_id).is_some() {
                     if renderables.get(*tile_id).unwrap().glyph == '#' {
-                        n_surrounding +=1 ;
+                        n_surrounding += 1 ;
                     }
                 }
             }
@@ -83,7 +83,7 @@ pub fn count_surrounding(coords: (i32, i32), tile_map: &HashMap<(i32, i32), Enti
     n_surrounding
 }
 
-pub fn get_fill_data(ecs: &mut World, tile_map: &HashMap<(i32, i32), Entity>) -> (Vec<(i32, i32)>, Vec<(i32, i32)>) {
+pub fn get_fill_data(ecs: &World, tile_map: &HashMap<(i32, i32), Entity>) -> (Vec<(i32, i32)>, Vec<(i32, i32)>) {
     let mut coordinates_to_fill: Vec<(i32, i32)> = Vec::new();
     let mut coordinates_to_empty: Vec<(i32, i32)> = Vec::new();
 
@@ -104,7 +104,7 @@ pub fn get_fill_data(ecs: &mut World, tile_map: &HashMap<(i32, i32), Entity>) ->
     (coordinates_to_fill, coordinates_to_empty)
 }
 
-pub fn apply_ca(ecs: &mut World, tile_map: &HashMap<(i32, i32), Entity>) {
+pub fn apply_ca(ecs: &World, tile_map: &HashMap<(i32, i32), Entity>) {
     let fill_info = get_fill_data(ecs, tile_map);
     let coordinates_to_fill: Vec<(i32, i32)> = fill_info.0;
     let coordinates_to_empty: Vec<(i32, i32)> = fill_info.1;
