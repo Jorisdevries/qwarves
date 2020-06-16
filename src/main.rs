@@ -14,18 +14,49 @@ static WINDOW_WIDTH_TILES: i32 = 50;
 static WINDOW_HEIGHT_TILES: i32 = 28;
 
 static LEFT_OFFSET_TILES: i32 = 4;
-static RIGHT_OFFSET_TILES: i32 = 8;
+static RIGHT_OFFSET_TILES: i32 = 4;
 static TOP_OFFSET_TILES: i32 = 2;
 static BOTTOM_OFFSET_TILES: i32 = 2;
+
+struct PlayerPosition {
+    x: i32,
+    y: i32
+}
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum RunState { Paused, Running }
 
+struct ScreenLayout {
+    tile_size_pixels: Vector,
+    window_size: Vector,
+    screen_size: Vector,
+    screen_origin: Vector,
+    
+    left_panel_origin: Vector,
+    right_panel_origin: Vector,
+    top_panel_origin: Vector,
+    bottom_panel_origin: Vector,
+}
+
+impl ScreenLayout {
+    fn new(tile_size_pixels: Vector, window_size: Vector, screen_size: Vector, screen_origin: Vector) -> ScreenLayout{
+            ScreenLayout {
+                tile_size_pixels,
+                window_size,
+                screen_size,
+                screen_origin,  
+
+                left_panel_origin: Vector::new(0, 0),
+                right_panel_origin: Vector::new(screen_origin.x + screen_size.x, screen_origin.y),
+                top_panel_origin: Vector::new(screen_origin.x, 0),
+                bottom_panel_origin: Vector::new(screen_origin.x, screen_origin.y + screen_size.y),
+            }
+    }
+}
+
 struct Game {
-    inventory: Asset<Image>,
-    map_size: Vector,
     tileset: Asset<HashMap<char, Image>>,
-    tile_size_px: Vector,
+    screen_layout: ScreenLayout,
     ecs: World,
     runstate: RunState
 }
@@ -39,7 +70,10 @@ fn generate_entities(ecs: &mut World) {
         color: Color::BLACK,
     })
     .with(components::Player{})
+    .with(components::Viewshed{ visible_tiles : Vec::new(), range : 8 })
     .build();
+
+    ecs.insert(PlayerPosition { x: 40, y: 25 });
 
     ecs
     .create_entity()
@@ -53,7 +87,7 @@ fn generate_entities(ecs: &mut World) {
     .build();
 }
 
-fn render_text(window: &mut Window, text: &'static str, x_pos: i32, y_pos: i32, font_size: f32) -> Result<()> {
+fn render_text(window: &mut Window, text: &'static str, position: Vector, font_size: f32) -> Result<()> {
     let mut test_draw = Asset::new(Font::load("Cascadia.ttf").and_then(move |font| {
         font.render(
             text,
@@ -65,7 +99,7 @@ fn render_text(window: &mut Window, text: &'static str, x_pos: i32, y_pos: i32, 
         window.draw(
             &image
                 .area()
-                .translate((x_pos, y_pos)),
+                .translate((position.x, position.y)),
             Img(&image),
         );
         Ok(())
@@ -101,8 +135,8 @@ fn camera_translate(player_position: Vector, object_position: Vector, map_size: 
         translate_x = 0.0;
     }
 
-    if player_position.x >= -2.0 + map_size.x - window_half_width as f32 {
-        translate_x = window_half_width as f32 - (-2.0 + map_size.x - window_half_width as f32);
+    if player_position.x >=  map_size.x - window_half_width as f32 {
+        translate_x = window_half_width as f32 - (map_size.x - window_half_width as f32);
     } 
 
     if player_position.y <= window_half_height as f32 {
@@ -117,12 +151,12 @@ fn camera_translate(player_position: Vector, object_position: Vector, map_size: 
     result
 }
 
-fn should_render(mapped_position: Vector) -> bool {
+fn should_render(mapped_position: Vector, screen_layout: &ScreenLayout) -> bool {
     // outside of x or y margin range
     if mapped_position.x < 0.0 ||
-    mapped_position.x > (WINDOW_WIDTH_TILES - LEFT_OFFSET_TILES - RIGHT_OFFSET_TILES + 1) as f32 ||
+    mapped_position.x > screen_layout.screen_size.x - 1.0 ||
     mapped_position.y < 0.0 ||
-    mapped_position.y > (WINDOW_HEIGHT_TILES - BOTTOM_OFFSET_TILES - TOP_OFFSET_TILES - 1) as f32 {
+    mapped_position.y > screen_layout.screen_size.y - 1.0 {
         return false;
     }
 
@@ -132,10 +166,29 @@ fn should_render(mapped_position: Vector) -> bool {
 fn try_move_player(delta_x: i32, delta_y: i32, ecs: &World) {
     let mut positions = ecs.write_storage::<components::Position>();
     let mut players = ecs.write_storage::<components::Player>();
+    let map = ecs.fetch::<map::Map>();
 
     for (_player, pos) in (&mut players, &mut positions).join() {
-        pos.x = cmp::min(map::MAP_WIDTH as i32, cmp::max(0, pos.x + delta_x));
-        pos.y = cmp::min(map::MAP_HEIGHT as i32, cmp::max(0, pos.y + delta_y));
+        pos.x = cmp::min(map.width, cmp::max(0, pos.x + delta_x));
+        pos.y = cmp::min(map.height, cmp::max(0, pos.y + delta_y));
+
+        let mut player_position = ecs.write_resource::<PlayerPosition>();
+        player_position.x = pos.x;
+        player_position.y = pos.y;
+    }
+}
+
+fn game_input(game: &mut Game, window: &mut Window) {
+    if window.keyboard()[Key::P] == ButtonState::Pressed {
+        if game.runstate == RunState::Running {
+            game.runstate = RunState::Paused; 
+        } else {
+            game.runstate = RunState::Running; 
+        }    
+    }
+
+    if window.keyboard()[Key::Escape].is_down() {
+        window.close();
     }
 }
 
@@ -166,6 +219,7 @@ fn register_components(ecs: &mut World) {
     ecs.register::<components::RandomMover>();
     ecs.register::<components::Tile>();
     ecs.register::<components::Monster>();
+    ecs.register::<components::Viewshed>();
 }
 
 fn run_systems(ecs: &mut World) {
@@ -173,24 +227,15 @@ fn run_systems(ecs: &mut World) {
     rw.run_now(ecs);
     let mut mob = systems::MonsterAI{};
     mob.run_now(ecs);
+    let mut vis = systems::VisibilitySystem{};
+    vis.run_now(ecs);
 
     ecs.maintain();
 }
 
-
 impl State for Game {
     /// Load the assets and initialise the game
     fn new() -> Result<Self> {
-        let font_cascadia = "Cascadia.ttf";
-
-        let inventory = Asset::new(Font::load(font_cascadia).and_then(move |font| {
-            font.render(
-                "Inventory:\n[A] Sword\n[B] Shield\n[C] Darts",
-                &FontStyle::new(20.0, Color::BLACK),
-            )
-        }));
-
-
         let font_square = "Square.ttf";
         let game_glyphs = "#@g.%|_o*";
         let tile_size_px = Vector::new(TILE_EDGE_PIXELS, TILE_EDGE_PIXELS);
@@ -211,19 +256,19 @@ impl State for Game {
         register_components(&mut ecs);
 
         generate_entities(&mut ecs);
-        let map_size = Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT);
+        let map_size = Vector::new(60, 50);
         map::generate_map_new(&mut ecs, map_size);
 
         {
-            let new_map = ecs.fetch::<map::Map>();
-            for _loop in 1..7 { map::apply_ca(&ecs, &new_map.tiles); }
+            let mut new_map = ecs.fetch_mut::<map::Map>();
+            for _loop in 1..7 { map::apply_ca(&ecs, &mut new_map); }
         }
 
+        let screen_layout = ScreenLayout::new(Vector::new(24, 24), Vector::new(50, 28), Vector::new(42, 24), Vector::new(4, 2));
+
         Ok(Self {
-            inventory,
-            map_size,
             tileset,
-            tile_size_px,
+            screen_layout,
             ecs,
             runstate : RunState::Running
         })
@@ -232,13 +277,8 @@ impl State for Game {
     /// Process keyboard and mouse, update the game state
     fn update(&mut self, window: &mut Window) -> Result<()> {
 
-        if window.keyboard()[Key::P] == ButtonState::Pressed {
-            if self.runstate == RunState::Running {
-                self.runstate = RunState::Paused; 
-            } else {
-                self.runstate = RunState::Running; 
-            }    
-        }
+
+        game_input(self, window);
 
         if self.runstate == RunState::Running {
             run_systems(&mut self.ecs);
@@ -253,41 +293,45 @@ impl State for Game {
     fn draw(&mut self, window: &mut Window) -> Result<()> {
         window.clear(Color::WHITE)?;
 
-        let screen_width_tiles = WINDOW_WIDTH_TILES - RIGHT_OFFSET_TILES - 2;
-        let screen_height_tiles = WINDOW_HEIGHT_TILES - BOTTOM_OFFSET_TILES;
-
-        render_text(window, "Test title", window.screen_size().x as i32 / 2 - 10, 25, 40.0)?;
-        render_text(window, "From function!", 2, window.screen_size().y as i32 - 90, 20.0)?;
-        render_text(window, "From function 2!", 2, window.screen_size().y as i32 - 120, 20.0)?;
+        render_text(window, "Test title", self.screen_layout.top_panel_origin.times(self.screen_layout.tile_size_pixels), 40.0)?;
+        render_text(window, "From function!", self.screen_layout.bottom_panel_origin.times(self.screen_layout.tile_size_pixels), 20.0)?;
 
         if self.runstate == RunState::Paused {
-            render_text(window, "Paused", screen_width_tiles/2 * TILE_EDGE_PIXELS, screen_height_tiles * TILE_EDGE_PIXELS, 20.0)?;
+            render_text(window, "Paused", self.screen_layout.right_panel_origin.times(self.screen_layout.tile_size_pixels), 20.0)?;
         }
-
-        let tile_size_px = self.tile_size_px;
-        let offset_px = Vector::new((LEFT_OFFSET_TILES - 1) * TILE_EDGE_PIXELS, TOP_OFFSET_TILES * TILE_EDGE_PIXELS);
-
-        // Draw the map
-        let tileset = &mut self.tileset;
 
         let positions = self.ecs.read_storage::<components::Position>();
         let renderables = self.ecs.read_storage::<components::Renderable>();
-        let players = self.ecs.read_storage::<components::Player>();
+        let tiles = self.ecs.read_storage::<components::Tile>();
+        let mut viewsheds = self.ecs.write_storage::<components::Viewshed>();
 
-        let mut player_pos: Vector = Vector::new(0, 0);
-        for (pos, _player) in (&positions, &players).join() {
-            player_pos = Vector::new(pos.x, pos.y);
-        }
-
+        let map = self.ecs.fetch::<map::Map>();
+        let player_pos = self.ecs.fetch::<PlayerPosition>();
         //println!("{}", player_pos);
 
+        let tileset = &mut self.tileset;
+        let offset_px = self.screen_layout.screen_origin.times(self.screen_layout.tile_size_pixels);
+        let tile_pixels = self.screen_layout.tile_size_pixels;
+        let screen_layout = &self.screen_layout;
+
+        let mut visible_tiles: &Vec<rltk::Point> = &Vec::new(); 
+
+        for (pos, viewshed) in (&positions, &viewsheds).join() {
+            let pt = rltk::Point::new(pos.x, pos.y);
+            visible_tiles = &viewshed.visible_tiles;
+        }
+
+        // render everything but tiles
         tileset.execute(|tileset| {
             for (pos, render) in (&positions, &renderables).join() {
                 let position = Vector::new(pos.x, pos.y);
-                let mapped_position = camera_translate(player_pos, position, Vector::new(map::MAP_WIDTH, map::MAP_HEIGHT));
-                let px_pos = offset_px + mapped_position.times(tile_size_px);
+                let pt = rltk::Point::new(pos.x, pos.y);
+                let in_viewshed = visible_tiles.contains(&pt);
 
-                if !should_render(mapped_position) {
+                let mapped_position = camera_translate(Vector::new(player_pos.x, player_pos.y), position, Vector::new(map.width, map.height));
+                let px_pos = offset_px + mapped_position.times(tile_pixels);
+
+                if !should_render(mapped_position, screen_layout) || !in_viewshed {
                     continue;
                 }
 
@@ -302,24 +346,16 @@ impl State for Game {
             Ok(())
         })?;
 
+        /*
         let full_health_width_px = 100.0;
         let current_health_width_px = (50 as f32 / 100 as f32) * full_health_width_px;
 
-        let health_bar_pos_px = offset_px + Vector::new(screen_width_tiles * TILE_EDGE_PIXELS, 0.0);
-        let mana_bar_pos_px = offset_px + Vector::new(screen_width_tiles * TILE_EDGE_PIXELS, -30.0);
+        let health_bar_pos_px = Vector::new(screen_width_tiles * TILE_EDGE_PIXELS, 0.0);
+        let mana_bar_pos_px = Vector::new(screen_width_tiles * TILE_EDGE_PIXELS, -TILE_EDGE_PIXELS);
 
-        render_bar(window, Color::RED, current_health_width_px, health_bar_pos_px, full_health_width_px, tile_size_px.y)?;
-        render_bar(window, Color::BLUE, current_health_width_px, mana_bar_pos_px, full_health_width_px, tile_size_px.y)?;
-
-        self.inventory.execute(|image| {
-            window.draw(
-                &image
-                    .area()
-                    .translate(health_bar_pos_px + Vector::new(0, tile_size_px.y)),
-                Img(&image),
-            );
-            Ok(())
-        })?;
+        render_bar(window, Color::RED, current_health_width_px, health_bar_pos_px, full_health_width_px, tile_size_px)?;
+        render_bar(window, Color::BLUE, current_health_width_px, mana_bar_pos_px, full_health_width_px, tile_size_px)?;
+        */
 
         Ok(())
     }

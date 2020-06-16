@@ -1,26 +1,66 @@
 use quicksilver::prelude::*;
 use specs::{Builder, Entity, World};
 use specs::prelude::*;
+use rltk::{ BaseMap, Algorithm2D, Point };
 
 use rand::Rng;
 use std::collections::HashMap;
-
-pub static MAP_WIDTH: u32 = 60;
-pub static MAP_HEIGHT: u32 = 50;
-pub static TILE_HEALTH: f32 = 1.0;
 
 use crate::components;
 
 #[derive(Default)]
 pub struct Map {
     pub tiles: HashMap<(i32, i32), Entity>,
+    pub glyph_map: HashMap<usize, char>,
+    pub index_to_position_map: HashMap<usize, (i32, i32)>,
+    pub position_to_index_map: HashMap<(i32, i32), usize>,
+    pub width: i32,
+    pub height: i32
 }
 
 impl Map {
-    pub fn new() -> Map {
+    pub fn new(width: i32, height: i32) -> Map {
         Map {
             tiles: HashMap::new(),
+            glyph_map: HashMap::new(),
+            index_to_position_map: HashMap::new(),
+            position_to_index_map: HashMap::new(),
+            width: width,
+            height: height
         }
+    }
+
+    fn index_to_position(&self, index: &usize) -> (i32, i32) {
+        let coords = self.index_to_position_map[&index];
+        coords
+    }
+
+    fn position_to_index(&self, coords: &(i32, i32)) -> usize {
+        let index = self.position_to_index_map[&coords];
+        index
+    }
+}
+
+impl BaseMap for Map {
+    fn is_opaque(&self, idx: usize) -> bool {
+        self.glyph_map[&idx] != '.' 
+    }
+}
+
+impl Algorithm2D for Map {
+    fn dimensions(&self) -> Point {
+        Point::new(self.width, self.height)
+    }
+
+    fn index_to_point2d(&self, index: usize) -> rltk::Point {
+        let coords = self.index_to_position_map[&index];
+        rltk::Point::new(coords.0, coords.1)
+    }
+
+    fn point2d_to_index(&self, point: Point) -> usize {
+        let coords = (point.x, point.y);
+        let index = self.position_to_index_map[&coords];
+        index
     }
 }
 
@@ -43,12 +83,12 @@ pub fn generate_map_new(ecs: &mut World, size: Vector) {
     let width = size.x as usize;
     let height = size.y as usize;
     
-    let mut map = Map::new(); 
+    let mut map = Map::new(size.x as i32, size.y as i32); 
     let mut rng = rand::thread_rng();
+    let mut index = 0;
 
     for x in 0..width {
         for y in 0..height {
-            
             let mut glyph = '.';
 
             let random_number: u32 = rng.gen_range(1, 100);
@@ -57,7 +97,15 @@ pub fn generate_map_new(ecs: &mut World, size: Vector) {
             }
 
             let tile = generate_tile(ecs, glyph, x as i32, y as i32);
-            map.tiles.insert((x as i32, y as i32), tile);
+            
+            let coords = (x as i32, y as i32);
+            map.tiles.insert(coords, tile);
+            map.glyph_map.insert(index, glyph);
+
+            map.index_to_position_map.insert(index as usize, coords);
+            map.position_to_index_map.insert(coords, index as usize);
+
+            index += 1;
         }
     }
 
@@ -92,20 +140,21 @@ pub fn get_fill_data(ecs: &World, tile_map: &HashMap<(i32, i32), Entity>) -> (Ve
     let tiles = ecs.read_storage::<components::Tile>();
 
     for (pos, render, _tile) in (&positions, &renderables, &tiles).join() {
-        let n_solid = count_surrounding((pos.x, pos.y), tile_map, &renderables); 
+        let coords = (pos.x, pos.y);
+        let n_solid = count_surrounding(coords, tile_map, &renderables); 
 
         if (render.glyph == '#' && n_solid >= 4) || (render.glyph == '.' && n_solid >= 5) { 
-            coordinates_to_fill.push((pos.x, pos.y)); 
+            coordinates_to_fill.push(coords); 
         } else {
-            coordinates_to_empty.push((pos.x, pos.y));
+            coordinates_to_empty.push(coords);
         } 
     }
 
     (coordinates_to_fill, coordinates_to_empty)
 }
 
-pub fn apply_ca(ecs: &World, tile_map: &HashMap<(i32, i32), Entity>) {
-    let fill_info = get_fill_data(ecs, tile_map);
+pub fn apply_ca(ecs: &World, map: &mut Map) {
+    let fill_info = get_fill_data(ecs, &map.tiles);
     let coordinates_to_fill: Vec<(i32, i32)> = fill_info.0;
     let coordinates_to_empty: Vec<(i32, i32)> = fill_info.1;
 
@@ -114,10 +163,15 @@ pub fn apply_ca(ecs: &World, tile_map: &HashMap<(i32, i32), Entity>) {
     let mut tiles = ecs.write_storage::<components::Tile>();
 
     for (pos, render, _tile) in (&mut positions, &mut renderables, &mut tiles).join() {
-        if coordinates_to_fill.iter().any(|&i| i == (pos.x, pos.y)) {
+        let coords = (pos.x, pos.y);
+        let index = map.position_to_index(&coords);
+
+        if coordinates_to_fill.iter().any(|&i| i == coords) {
             render.glyph = '#';
-        } else if coordinates_to_empty.iter().any(|&i| i == (pos.x, pos.y)) {
+            *map.glyph_map.get_mut(&index).unwrap() = '#';
+        } else if coordinates_to_empty.iter().any(|&i| i == coords) {
             render.glyph = '.';
+            *map.glyph_map.get_mut(&index).unwrap() = '.';
         }
     }
 }

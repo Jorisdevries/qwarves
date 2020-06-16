@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 quicksilver = { version = "0.3.10", default-features = false, features = ["fonts", "saving"]}
-rand="0.7.3"
+rand = "0.7.3"
 specs = "0.16.1"
 specs-derive = "0.4.0"
+rltk = "0.7.0"

@@ -1,7 +1,9 @@
 use specs::prelude::*;
+use quicksilver::prelude::*;
 use rand::Rng;
 
 use crate::components;
+use crate::map;
 
 impl<'a> System<'a> for components::RandomMover {
     type SystemData = (ReadStorage<'a, components::RandomMover>, 
@@ -29,7 +31,26 @@ impl<'a> System<'a> for MonsterAI {
         let (pos, monster) = data;
 
         for (_pos, _monster) in (&pos, &monster).join() {
-            println!("Monster considers their own existence");
+            //println!("Monster considers their own existence");
+        }
+    }
+}
+
+pub struct VisibilitySystem {}
+
+impl<'a> System<'a> for VisibilitySystem {
+    type SystemData = ( ReadExpect<'a, map::Map>,
+                        WriteStorage<'a, components::Viewshed>, 
+                        WriteStorage<'a, components::Position>);
+
+    fn run(&mut self, data : Self::SystemData) {
+        let (map, mut viewshed, pos) = data;
+
+        for (viewshed,pos) in (&mut viewshed, &pos).join() {
+            println!("{}", Vector::new(pos.x, pos.y));
+            viewshed.visible_tiles.clear();
+            viewshed.visible_tiles = rltk::field_of_view(rltk::Point::new(pos.x, pos.y), viewshed.range, &*map);
+            viewshed.visible_tiles.retain(|p| p.x > 0 && p.x < map.width-1 && p.y > 0 && p.y < map.height-1 );
         }
     }
 }
