@@ -305,7 +305,7 @@ impl State for Game {
         let positions = self.ecs.read_storage::<components::Position>();
         let renderables = self.ecs.read_storage::<components::Renderable>();
         let tiles = self.ecs.read_storage::<components::Tile>();
-        let mut viewsheds = self.ecs.write_storage::<components::Viewshed>();
+        let viewsheds = self.ecs.write_storage::<components::Viewshed>();
 
         let map = self.ecs.fetch::<map::Map>();
         let player_pos = self.ecs.fetch::<PlayerPosition>();
@@ -328,12 +328,13 @@ impl State for Game {
             for (pos, render) in (&positions, &renderables).join() {
                 let position = Vector::new(pos.x, pos.y);
                 let pt = rltk::Point::new(pos.x, pos.y);
-                let in_viewshed = visible_tiles.contains(&pt);
+                //let in_viewshed = visible_tiles.contains(&pt);
+                let visible = map.revealed_map[&(pos.x as i32, pos.y as i32)];
 
                 let mapped_position = camera_translate(Vector::new(player_pos.x, player_pos.y), position, Vector::new(map.width, map.height));
                 let px_pos = offset_px + mapped_position.times(tile_pixels);
 
-                if !should_render(mapped_position, screen_layout) || !in_viewshed {
+                if !should_render(mapped_position, screen_layout) || !visible {
                     continue;
                 }
 

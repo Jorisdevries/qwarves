@@ -12,6 +12,7 @@ use crate::components;
 pub struct Map {
     pub tiles: HashMap<(i32, i32), Entity>,
     pub glyph_map: HashMap<usize, char>,
+    pub revealed_map: HashMap<(i32, i32), bool>,
     pub index_to_position_map: HashMap<usize, (i32, i32)>,
     pub position_to_index_map: HashMap<(i32, i32), usize>,
     pub width: i32,
@@ -23,21 +24,12 @@ impl Map {
         Map {
             tiles: HashMap::new(),
             glyph_map: HashMap::new(),
+            revealed_map: HashMap::new(),
             index_to_position_map: HashMap::new(),
             position_to_index_map: HashMap::new(),
             width: width,
             height: height
         }
-    }
-
-    fn index_to_position(&self, index: &usize) -> (i32, i32) {
-        let coords = self.index_to_position_map[&index];
-        coords
-    }
-
-    pub fn position_to_index(&self, coords: &(i32, i32)) -> usize {
-        let index = self.position_to_index_map[&coords];
-        index
     }
 }
 
@@ -104,6 +96,7 @@ pub fn generate_map_new(ecs: &mut World, size: Vector) {
 
             map.index_to_position_map.insert(index as usize, coords);
             map.position_to_index_map.insert(coords, index as usize);
+            map.revealed_map.insert(coords, false);
 
             index += 1;
         }

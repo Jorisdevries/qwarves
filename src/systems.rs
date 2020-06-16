@@ -1,9 +1,9 @@
 use specs::prelude::*;
-use quicksilver::prelude::*;
 use rand::Rng;
 
 use crate::components;
 use crate::map;
+use rltk::{Algorithm2D};
 
 impl<'a> System<'a> for components::RandomMover {
     type SystemData = (ReadStorage<'a, components::RandomMover>, 
@@ -39,17 +39,27 @@ impl<'a> System<'a> for MonsterAI {
 pub struct VisibilitySystem {}
 
 impl<'a> System<'a> for VisibilitySystem {
-    type SystemData = ( ReadExpect<'a, map::Map>,
+    type SystemData = ( WriteExpect<'a, map::Map>,
+                        Entities<'a>,
                         WriteStorage<'a, components::Viewshed>, 
-                        WriteStorage<'a, components::Position>);
+                        WriteStorage<'a, components::Position>,
+                        ReadStorage<'a, components::Player>);
 
     fn run(&mut self, data : Self::SystemData) {
-        let (map, mut viewshed, pos) = data;
+        let (mut map, entities, mut viewshed, pos, player) = data;
 
-        for (viewshed,pos) in (&mut viewshed, &pos).join() {
+        for (ent,viewshed,pos) in (&entities, &mut viewshed, &pos).join() {
             viewshed.visible_tiles.clear();
             viewshed.visible_tiles = rltk::field_of_view(rltk::Point::new(pos.x, pos.y), viewshed.range, &*map);
             viewshed.visible_tiles.retain(|p| p.x > 0 && p.x < map.width-1 && p.y > 0 && p.y < map.height-1 );
+
+            // If this is the player, reveal what they can see
+            let p : Option<&components::Player> = player.get(ent);
+            if let Some(_p) = p {
+                for vis in viewshed.visible_tiles.iter() {
+                    *map.revealed_map.get_mut(&(vis.x, vis.y)).unwrap() = true;
+                }
+            }
         }
     }
 }
@@ -65,8 +75,8 @@ impl<'a> System<'a> for GlyphMapper {
         let (mut map, renderable, pos) = data;
 
         for (renderable, pos) in (&renderable, &pos).join() {
-            let coords = (pos.x, pos.y);
-            let index = map.position_to_index(&coords);
+            let coords = rltk::Point::new(pos.x, pos.y);
+            let index = map.point2d_to_index(coords);
 
             let glyph = renderable.glyph;
             *map.glyph_map.get_mut(&index).unwrap() = glyph;
