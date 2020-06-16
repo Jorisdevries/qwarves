@@ -229,6 +229,8 @@ fn run_systems(ecs: &mut World) {
     mob.run_now(ecs);
     let mut vis = systems::VisibilitySystem{};
     vis.run_now(ecs);
+    let mut gm = systems::GlyphMapper{};
+    gm.run_now(ecs);
 
     ecs.maintain();
 }

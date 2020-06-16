@@ -35,7 +35,7 @@ impl Map {
         coords
     }
 
-    fn position_to_index(&self, coords: &(i32, i32)) -> usize {
+    pub fn position_to_index(&self, coords: &(i32, i32)) -> usize {
         let index = self.position_to_index_map[&coords];
         index
     }
@@ -164,14 +164,11 @@ pub fn apply_ca(ecs: &World, map: &mut Map) {
 
     for (pos, render, _tile) in (&mut positions, &mut renderables, &mut tiles).join() {
         let coords = (pos.x, pos.y);
-        let index = map.position_to_index(&coords);
 
         if coordinates_to_fill.iter().any(|&i| i == coords) {
             render.glyph = '#';
-            *map.glyph_map.get_mut(&index).unwrap() = '#';
         } else if coordinates_to_empty.iter().any(|&i| i == coords) {
             render.glyph = '.';
-            *map.glyph_map.get_mut(&index).unwrap() = '.';
         }
     }
 }

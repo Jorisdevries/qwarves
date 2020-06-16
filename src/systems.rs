@@ -7,7 +7,7 @@ use crate::map;
 
 impl<'a> System<'a> for components::RandomMover {
     type SystemData = (ReadStorage<'a, components::RandomMover>, 
-                        WriteStorage<'a, components::Position>);
+                       WriteStorage<'a, components::Position>);
 
     fn run(&mut self, (lefty, mut pos) : Self::SystemData) {
         for (_lefty,pos) in (&lefty, &mut pos).join() {
@@ -47,10 +47,29 @@ impl<'a> System<'a> for VisibilitySystem {
         let (map, mut viewshed, pos) = data;
 
         for (viewshed,pos) in (&mut viewshed, &pos).join() {
-            println!("{}", Vector::new(pos.x, pos.y));
             viewshed.visible_tiles.clear();
             viewshed.visible_tiles = rltk::field_of_view(rltk::Point::new(pos.x, pos.y), viewshed.range, &*map);
             viewshed.visible_tiles.retain(|p| p.x > 0 && p.x < map.width-1 && p.y > 0 && p.y < map.height-1 );
+        }
+    }
+}
+
+pub struct GlyphMapper {}
+
+impl<'a> System<'a> for GlyphMapper {
+    type SystemData = ( WriteExpect<'a, map::Map>,
+                        WriteStorage<'a, components::Renderable>, 
+                        WriteStorage<'a, components::Position>);
+
+    fn run(&mut self, data : Self::SystemData) {
+        let (mut map, renderable, pos) = data;
+
+        for (renderable, pos) in (&renderable, &pos).join() {
+            let coords = (pos.x, pos.y);
+            let index = map.position_to_index(&coords);
+
+            let glyph = renderable.glyph;
+            *map.glyph_map.get_mut(&index).unwrap() = glyph;
         }
     }
 }
