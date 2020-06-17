@@ -341,7 +341,7 @@ impl State for Game {
 
         let map = self.ecs.fetch::<map::Map>();
         let player_pos = self.ecs.fetch::<PlayerPosition>();
-        println!("{}", Vector::new(player_pos.x, player_pos.y));
+        //println!("{}", Vector::new(player_pos.x, player_pos.y));
 
         let tileset = &mut self.tileset;
         let offset_px = self.screen_layout.screen_origin.times(self.screen_layout.tile_size_pixels);
@@ -361,12 +361,20 @@ impl State for Game {
                     continue;
                 }
 
-                if let Some(image) = tileset.get(&render.glyph) {
+                if !visible {
                     window.draw(
-                        &Rectangle::new(px_pos, image.area().size()),
-                        Blended(&image, render.color),
+                        &Rectangle::new(px_pos, screen_layout.tile_size_pixels),
+                        Color::BLACK,
                     );
+                } else {
+                    if let Some(image) = tileset.get(&render.glyph) {
+                        window.draw(
+                            &Rectangle::new(px_pos, image.area().size()),
+                            Blended(&image, render.color),
+                        );
+                    }
                 }
+
             }
 
             Ok(())
