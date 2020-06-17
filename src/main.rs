@@ -12,6 +12,10 @@ pub mod systems;
 static TILE_EDGE_PIXELS: i32 = 24;
 static WINDOW_WIDTH_TILES: i32 = 49;
 static WINDOW_HEIGHT_TILES: i32 = 27;
+static SCREEN_WIDTH_TILES: i32 = 41;
+static SCREEN_HEIGHT_TILES: i32 = 23;
+static SCREEN_ORIGIN_X_TILES: i32 = 4;
+static SCREEN_ORIGIN_Y_TILES: i32 = 2;
 
 struct PlayerPosition {
     x: i32,
@@ -31,12 +35,29 @@ struct ScreenLayout {
     right_panel_origin: Vector,
     top_panel_origin: Vector,
     bottom_panel_origin: Vector,
+
+    left_panel_origin_pixels: Vector,
+    right_panel_origin_pixels: Vector,
+    top_panel_origin_pixels: Vector,
+    bottom_panel_origin_pixels: Vector,
+
+    left_margin: f32,
+    right_margin: f32,
+    top_margin: f32,
+    bottom_margin: f32,
 }
 
 impl ScreenLayout {
+    fn set_pixel_sizes(&mut self) {
+        self.left_panel_origin_pixels = self.left_panel_origin.times(self.tile_size_pixels);
+        self.right_panel_origin_pixels = self.right_panel_origin.times(self.tile_size_pixels);
+        self.top_panel_origin_pixels = self.top_panel_origin.times(self.tile_size_pixels);
+        self.bottom_panel_origin_pixels = self.bottom_panel_origin.times(self.tile_size_pixels);
+    }
+
     fn new(tile_size_pixels: Vector, window_size: Vector, screen_size: Vector, screen_origin: Vector) -> ScreenLayout {
-        if screen_size.x % 2.0 != 1.0 || screen_size.y % 2.0 != 1.0 {
-            panic!("Must use odd screen dimensions.");
+        if window_size.x % 2.0 != 1.0 || window_size.y % 2.0 != 1.0 || screen_size.x % 2.0 != 1.0 || screen_size.y % 2.0 != 1.0 {
+            panic!("Must use odd screen and window dimensions.");
         }
         
         ScreenLayout {
@@ -49,6 +70,16 @@ impl ScreenLayout {
             right_panel_origin: Vector::new(screen_origin.x + screen_size.x, screen_origin.y),
             top_panel_origin: Vector::new(screen_origin.x, 0),
             bottom_panel_origin: Vector::new(screen_origin.x, screen_origin.y + screen_size.y),
+
+            left_panel_origin_pixels: Vector::new(0, 0), 
+            right_panel_origin_pixels: Vector::new(0, 0),
+            top_panel_origin_pixels: Vector::new(0, 0),
+            bottom_panel_origin_pixels: Vector::new(0, 0),
+
+            left_margin: screen_origin.x,
+            right_margin: window_size.x - screen_origin.x - screen_size.x,
+            top_margin: screen_origin.y,
+            bottom_margin: window_size.y - screen_origin.y - screen_size.y,
         }
     }
 }
@@ -150,11 +181,10 @@ fn camera_translate(player_position: Vector, object_position: Vector, map_size: 
 }
 
 fn should_render(mapped_position: Vector, screen_layout: &ScreenLayout) -> bool {
-    // outside of x or y margin range
-    if mapped_position.x < 0.0 ||
-    mapped_position.x > screen_layout.screen_size.x - 1.0 ||
-    mapped_position.y < 0.0 ||
-    mapped_position.y > screen_layout.screen_size.y - 1.0 {
+    if mapped_position.x < screen_layout.left_margin ||
+    mapped_position.y < screen_layout.top_margin ||
+    mapped_position.x > screen_layout.window_size.x - screen_layout.right_margin - 1.0 ||
+    mapped_position.y > screen_layout.window_size.y - screen_layout.bottom_margin - 1.0 {
         return false;
     }
 
@@ -237,7 +267,12 @@ fn run_systems(ecs: &mut World) {
 impl State for Game {
     /// Load the assets and initialise the game
     fn new() -> Result<Self> {
-        let screen_layout = ScreenLayout::new(Vector::new(24, 24), Vector::new(50, 28), Vector::new(41, 23), Vector::new(4, 2));
+        let mut screen_layout = ScreenLayout::new(Vector::new(TILE_EDGE_PIXELS, TILE_EDGE_PIXELS), 
+                                                  Vector::new(WINDOW_WIDTH_TILES, WINDOW_HEIGHT_TILES), 
+                                                  Vector::new(SCREEN_WIDTH_TILES, SCREEN_HEIGHT_TILES), 
+                                                  Vector::new(SCREEN_ORIGIN_X_TILES, SCREEN_ORIGIN_Y_TILES));
+
+        screen_layout.set_pixel_sizes();
 
         let font_square = "Square.ttf";
         let game_glyphs = "#@g.%|_o*";
@@ -294,11 +329,11 @@ impl State for Game {
     fn draw(&mut self, window: &mut Window) -> Result<()> {
         window.clear(Color::WHITE)?;
 
-        render_text(window, "Test title", self.screen_layout.top_panel_origin.times(self.screen_layout.tile_size_pixels), 40.0)?;
-        render_text(window, "From function!", self.screen_layout.bottom_panel_origin.times(self.screen_layout.tile_size_pixels), 20.0)?;
+        render_text(window, "Test title", self.screen_layout.top_panel_origin_pixels, 40.0)?;
+        render_text(window, "From function!", self.screen_layout.bottom_panel_origin_pixels, 20.0)?;
 
         if self.runstate == RunState::Paused {
-            render_text(window, "Paused", self.screen_layout.right_panel_origin.times(self.screen_layout.tile_size_pixels), 20.0)?;
+            render_text(window, "Paused", self.screen_layout.right_panel_origin_pixels, 20.0)?;
         }
 
         let positions = self.ecs.read_storage::<components::Position>();
@@ -306,7 +341,7 @@ impl State for Game {
 
         let map = self.ecs.fetch::<map::Map>();
         let player_pos = self.ecs.fetch::<PlayerPosition>();
-        //println!("{}", player_pos);
+        println!("{}", Vector::new(player_pos.x, player_pos.y));
 
         let tileset = &mut self.tileset;
         let offset_px = self.screen_layout.screen_origin.times(self.screen_layout.tile_size_pixels);
@@ -322,7 +357,7 @@ impl State for Game {
                 let mapped_position = camera_translate(Vector::new(player_pos.x, player_pos.y), position, Vector::new(map.width, map.height), screen_layout);
                 let px_pos = offset_px + mapped_position.times(tile_pixels);
 
-                if !should_render(mapped_position, screen_layout) {
+                if !should_render(screen_layout.screen_origin + mapped_position, screen_layout) {
                     continue;
                 }
 
