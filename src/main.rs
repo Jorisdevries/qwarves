@@ -10,13 +10,8 @@ pub mod components;
 pub mod systems;
 
 static TILE_EDGE_PIXELS: i32 = 24;
-static WINDOW_WIDTH_TILES: i32 = 50;
-static WINDOW_HEIGHT_TILES: i32 = 28;
-
-static LEFT_OFFSET_TILES: i32 = 4;
-static RIGHT_OFFSET_TILES: i32 = 4;
-static TOP_OFFSET_TILES: i32 = 2;
-static BOTTOM_OFFSET_TILES: i32 = 2;
+static WINDOW_WIDTH_TILES: i32 = 49;
+static WINDOW_HEIGHT_TILES: i32 = 27;
 
 struct PlayerPosition {
     x: i32,
@@ -39,18 +34,22 @@ struct ScreenLayout {
 }
 
 impl ScreenLayout {
-    fn new(tile_size_pixels: Vector, window_size: Vector, screen_size: Vector, screen_origin: Vector) -> ScreenLayout{
-            ScreenLayout {
-                tile_size_pixels,
-                window_size,
-                screen_size,
-                screen_origin,  
+    fn new(tile_size_pixels: Vector, window_size: Vector, screen_size: Vector, screen_origin: Vector) -> ScreenLayout {
+        if screen_size.x % 2.0 != 1.0 || screen_size.y % 2.0 != 1.0 {
+            panic!("Must use odd screen dimensions.");
+        }
+        
+        ScreenLayout {
+            tile_size_pixels,
+            window_size,
+            screen_size,
+            screen_origin,  
 
-                left_panel_origin: Vector::new(0, 0),
-                right_panel_origin: Vector::new(screen_origin.x + screen_size.x, screen_origin.y),
-                top_panel_origin: Vector::new(screen_origin.x, 0),
-                bottom_panel_origin: Vector::new(screen_origin.x, screen_origin.y + screen_size.y),
-            }
+            left_panel_origin: Vector::new(0, 0),
+            right_panel_origin: Vector::new(screen_origin.x + screen_size.x, screen_origin.y),
+            top_panel_origin: Vector::new(screen_origin.x, 0),
+            bottom_panel_origin: Vector::new(screen_origin.x, screen_origin.y + screen_size.y),
+        }
     }
 }
 
@@ -70,7 +69,7 @@ fn generate_entities(ecs: &mut World) {
         color: Color::BLACK,
     })
     .with(components::Player{})
-    .with(components::Viewshed{ visible_tiles : Vec::new(), range : 8 })
+    .with(components::Viewshed{ visible_tiles : Vec::new(), range : 8, dirty: true })
     .build();
 
     ecs.insert(PlayerPosition { x: 40, y: 25 });
@@ -124,31 +123,30 @@ fn render_bar(window: &mut Window, colour: Color, current_value: f32, origin: Ve
     Ok(())
 }
 
-fn camera_translate(player_position: Vector, object_position: Vector, map_size: Vector) -> Vector {
-    let window_half_width = (WINDOW_WIDTH_TILES - LEFT_OFFSET_TILES - RIGHT_OFFSET_TILES) / 2;
-    let window_half_height = (WINDOW_HEIGHT_TILES - TOP_OFFSET_TILES - BOTTOM_OFFSET_TILES) / 2;
+fn camera_translate(player_position: Vector, object_position: Vector, map_size: Vector, screen_layout: &ScreenLayout) -> Vector {
+    // the new origin is the player position + half the screen dimensions + (1, 1) to get player in the middle
+    let half_screen_edges = (screen_layout.screen_size - Vector::new(1.0, 1.0)).times(Vector::new(0.5, 0.5));
+    let mut player_position_to_use = player_position; 
+
+    if player_position.x < half_screen_edges.x {
+        player_position_to_use.x = half_screen_edges.x;
+    } 
     
-    let mut translate_x = window_half_width as f32 - player_position.x; 
-    let mut translate_y = window_half_height as f32 - player_position.y; 
-
-    if player_position.x <= window_half_width as f32 {
-        translate_x = 0.0;
-    }
-
-    if player_position.x >=  map_size.x - window_half_width as f32 {
-        translate_x = window_half_width as f32 - (map_size.x - window_half_width as f32);
+    if player_position.y < half_screen_edges.y {
+        player_position_to_use.y = half_screen_edges.y;
     } 
 
-    if player_position.y <= window_half_height as f32 {
-        translate_y = 0.0;
-    }
-
-    if player_position.y >= map_size.y - window_half_height as f32 {
-        translate_y = window_half_height as f32 - (map_size.y - window_half_height as f32);
+    if player_position.x > map_size.x - half_screen_edges.x - 1.0 {
+        player_position_to_use.x = map_size.x - half_screen_edges.x - 1.0;
     } 
 
-    let result = Vector::new(object_position.x + translate_x, object_position.y + translate_y); 
-    result
+    if player_position.y > map_size.y - half_screen_edges.y - 1.0 {
+        player_position_to_use.y = map_size.y - half_screen_edges.y - 1.0;
+    } 
+
+    let translation = player_position_to_use - half_screen_edges; 
+    let new_position = object_position - translation;
+    new_position
 }
 
 fn should_render(mapped_position: Vector, screen_layout: &ScreenLayout) -> bool {
@@ -169,8 +167,9 @@ fn try_move_player(delta_x: i32, delta_y: i32, ecs: &World) {
     let map = ecs.fetch::<map::Map>();
 
     for (_player, pos) in (&mut players, &mut positions).join() {
-        pos.x = cmp::min(map.width, cmp::max(0, pos.x + delta_x));
-        pos.y = cmp::min(map.height, cmp::max(0, pos.y + delta_y));
+        //TODO: still stray off the map
+        pos.x = cmp::min(map.width - 1, cmp::max(0, pos.x + delta_x));
+        pos.y = cmp::min(map.height - 1, cmp::max(0, pos.y + delta_y));
 
         let mut player_position = ecs.write_resource::<PlayerPosition>();
         player_position.x = pos.x;
@@ -238,9 +237,12 @@ fn run_systems(ecs: &mut World) {
 impl State for Game {
     /// Load the assets and initialise the game
     fn new() -> Result<Self> {
+        let screen_layout = ScreenLayout::new(Vector::new(24, 24), Vector::new(50, 28), Vector::new(41, 23), Vector::new(4, 2));
+
         let font_square = "Square.ttf";
         let game_glyphs = "#@g.%|_o*";
-        let tile_size_px = Vector::new(TILE_EDGE_PIXELS, TILE_EDGE_PIXELS);
+        let tile_size_px = screen_layout.tile_size_pixels; 
+        
         let tileset = Asset::new(Font::load(font_square).and_then(move |text| {
             let tiles = text
                 .render(game_glyphs, &FontStyle::new(tile_size_px.y, Color::WHITE))
@@ -266,7 +268,6 @@ impl State for Game {
             for _loop in 1..7 { map::apply_ca(&ecs, &mut new_map); }
         }
 
-        let screen_layout = ScreenLayout::new(Vector::new(24, 24), Vector::new(50, 28), Vector::new(42, 24), Vector::new(4, 2));
 
         Ok(Self {
             tileset,
@@ -278,8 +279,6 @@ impl State for Game {
 
     /// Process keyboard and mouse, update the game state
     fn update(&mut self, window: &mut Window) -> Result<()> {
-
-
         game_input(self, window);
 
         if self.runstate == RunState::Running {
@@ -304,8 +303,6 @@ impl State for Game {
 
         let positions = self.ecs.read_storage::<components::Position>();
         let renderables = self.ecs.read_storage::<components::Renderable>();
-        let tiles = self.ecs.read_storage::<components::Tile>();
-        let viewsheds = self.ecs.write_storage::<components::Viewshed>();
 
         let map = self.ecs.fetch::<map::Map>();
         let player_pos = self.ecs.fetch::<PlayerPosition>();
@@ -316,25 +313,16 @@ impl State for Game {
         let tile_pixels = self.screen_layout.tile_size_pixels;
         let screen_layout = &self.screen_layout;
 
-        let mut visible_tiles: &Vec<rltk::Point> = &Vec::new(); 
-
-        for (pos, viewshed) in (&positions, &viewsheds).join() {
-            let pt = rltk::Point::new(pos.x, pos.y);
-            visible_tiles = &viewshed.visible_tiles;
-        }
-
         // render everything but tiles
         tileset.execute(|tileset| {
             for (pos, render) in (&positions, &renderables).join() {
                 let position = Vector::new(pos.x, pos.y);
-                let pt = rltk::Point::new(pos.x, pos.y);
-                //let in_viewshed = visible_tiles.contains(&pt);
                 let visible = map.revealed_map[&(pos.x as i32, pos.y as i32)];
 
-                let mapped_position = camera_translate(Vector::new(player_pos.x, player_pos.y), position, Vector::new(map.width, map.height));
+                let mapped_position = camera_translate(Vector::new(player_pos.x, player_pos.y), position, Vector::new(map.width, map.height), screen_layout);
                 let px_pos = offset_px + mapped_position.times(tile_pixels);
 
-                if !should_render(mapped_position, screen_layout) || !visible {
+                if !should_render(mapped_position, screen_layout) {
                     continue;
                 }
 
@@ -372,13 +360,10 @@ fn main() {
     std::env::set_var("WINIT_HIDPI_FACTOR", "2.0");
 
     let settings = Settings {
-        // If the graphics do need to be scaled (e.g. using
-        // `with_center`), blur them. This looks better with fonts.
+        // If the graphics do need to be scaled (e.g. using `with_center`), blur them. This looks better with fonts.
         scale: quicksilver::graphics::ImageScaleStrategy::Blur,
         ..Default::default()
     };
-
-    
 
     run::<Game>("Qwarves", 
                 Vector::new(WINDOW_WIDTH_TILES * TILE_EDGE_PIXELS, WINDOW_HEIGHT_TILES * TILE_EDGE_PIXELS), 
