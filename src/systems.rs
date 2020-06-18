@@ -49,17 +49,26 @@ impl<'a> System<'a> for VisibilitySystem {
         let (mut map, entities, mut viewshed, pos, player) = data;
 
         for (ent,viewshed,pos) in (&entities, &mut viewshed, &pos).join() {
-            viewshed.visible_tiles.clear();
-            viewshed.visible_tiles = rltk::field_of_view(rltk::Point::new(pos.x, pos.y), viewshed.range, &*map);
-            viewshed.visible_tiles.retain(|p| p.x > 0 && p.x < map.width-1 && p.y > 0 && p.y < map.height-1 );
+            if viewshed.dirty {
+                viewshed.dirty = false;
+                viewshed.visible_tiles.clear();
+                viewshed.visible_tiles = rltk::field_of_view(rltk::Point::new(pos.x, pos.y), viewshed.range, &*map);
+                viewshed.visible_tiles.retain(|p| p.x >= 0 && p.x < map.width && p.y >= 0 && p.y < map.height);
 
-            // If this is the player, reveal what they can see
-            let p : Option<&components::Player> = player.get(ent);
-            if let Some(_p) = p {
-                for vis in viewshed.visible_tiles.iter() {
-                    *map.revealed_map.get_mut(&(vis.x, vis.y)).unwrap() = true;
+                // If this is the player, reveal what they can see
+                let p : Option<&components::Player> = player.get(ent);
+
+                if let Some(_p) = p {
+                    for t in map.visible_map.iter_mut() { *t = false };
+                    for vis in viewshed.visible_tiles.iter() {
+                        let idx = map.point2d_to_index(rltk::Point::new(vis.x, vis.y));
+                        map.revealed_map[idx] = true;
+                        map.visible_map[idx] = true;
+                    }
                 }
+
             }
+            
         }
     }
 }

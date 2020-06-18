@@ -1,6 +1,7 @@
 use quicksilver::prelude::*;
 use specs::prelude::*;
 use specs::{Builder, World};
+use rltk::{ Algorithm2D };
 
 use std::collections::HashMap;
 use std::cmp;
@@ -194,9 +195,10 @@ fn should_render(mapped_position: Vector, screen_layout: &ScreenLayout) -> bool 
 fn try_move_player(delta_x: i32, delta_y: i32, ecs: &World) {
     let mut positions = ecs.write_storage::<components::Position>();
     let mut players = ecs.write_storage::<components::Player>();
+    let mut viewsheds = ecs.write_storage::<components::Viewshed>();
     let map = ecs.fetch::<map::Map>();
 
-    for (_player, pos) in (&mut players, &mut positions).join() {
+    for (_player, pos, viewshed) in (&mut players, &mut positions, &mut viewsheds).join() {
         //TODO: still stray off the map
         pos.x = cmp::min(map.width - 1, cmp::max(0, pos.x + delta_x));
         pos.y = cmp::min(map.height - 1, cmp::max(0, pos.y + delta_y));
@@ -204,6 +206,8 @@ fn try_move_player(delta_x: i32, delta_y: i32, ecs: &World) {
         let mut player_position = ecs.write_resource::<PlayerPosition>();
         player_position.x = pos.x;
         player_position.y = pos.y;
+
+        viewshed.dirty = true;
     }
 }
 
@@ -352,7 +356,10 @@ impl State for Game {
         tileset.execute(|tileset| {
             for (pos, render) in (&positions, &renderables).join() {
                 let position = Vector::new(pos.x, pos.y);
-                let visible = map.revealed_map[&(pos.x as i32, pos.y as i32)];
+                let idx = map.point2d_to_index(rltk::Point::new(pos.x, pos.y));
+
+                let visible = map.visible_map[idx];
+                let revealed = map.revealed_map[idx];
 
                 let mapped_position = camera_translate(Vector::new(player_pos.x, player_pos.y), position, Vector::new(map.width, map.height), screen_layout);
                 let px_pos = offset_px + mapped_position.times(tile_pixels);
@@ -361,20 +368,26 @@ impl State for Game {
                     continue;
                 }
 
-                if !visible {
-                    window.draw(
-                        &Rectangle::new(px_pos, screen_layout.tile_size_pixels),
-                        Color::BLACK,
-                    );
-                } else {
+                if visible {
                     if let Some(image) = tileset.get(&render.glyph) {
                         window.draw(
                             &Rectangle::new(px_pos, image.area().size()),
                             Blended(&image, render.color),
                         );
                     }
+                } else if revealed && !visible {
+                    if let Some(image) = tileset.get(&render.glyph) {
+                        window.draw(
+                            &Rectangle::new(px_pos, image.area().size()),
+                            Blended(&image, Color::BLACK.with_alpha(0.5)),
+                        );
+                    }
+                } else {
+                    window.draw(
+                        &Rectangle::new(px_pos, screen_layout.tile_size_pixels),
+                        Color::BLACK,
+                    );
                 }
-
             }
 
             Ok(())
