@@ -27,15 +27,16 @@ pub struct MonsterAI {}
 impl<'a> System<'a> for MonsterAI {
     type SystemData = ( ReadExpect<'a, components::PlayerPosition>,
                         ReadStorage<'a, components::Viewshed>,
-                        ReadStorage<'a, components::Monster>);
+                        ReadStorage<'a, components::Monster>,
+                        ReadStorage<'a, components::Name>);
 
     fn run(&mut self, data : Self::SystemData) {
-        let (player_pos, viewshed, monster) = data;
+        let (player_pos, viewshed, monster, name) = data;
 
-        for (viewshed,_monster) in (&viewshed, &monster).join() {
+        for (viewshed, _monster, name) in (&viewshed, &monster, &name).join() {
             for i in &viewshed.visible_tiles {
                 if i.x == player_pos.x && i.x == player_pos.x {
-                    println!("Monster shouts insults");
+                    println!("{} shouts insults", name.name);
                     break;
                 }
             }

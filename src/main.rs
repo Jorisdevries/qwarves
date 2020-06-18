@@ -39,6 +39,16 @@ struct ScreenLayout {
     top_panel_origin_pixels: Vector,
     bottom_panel_origin_pixels: Vector,
 
+    left_panel_size: Vector,
+    right_panel_size: Vector,
+    top_panel_size: Vector,
+    bottom_panel_size: Vector,
+
+    left_panel_size_pixels: Vector,
+    right_panel_size_pixels: Vector,
+    top_panel_size_pixels: Vector,
+    bottom_panel_size_pixels: Vector,
+
     left_margin: f32,
     right_margin: f32,
     top_margin: f32,
@@ -51,6 +61,11 @@ impl ScreenLayout {
         self.right_panel_origin_pixels = self.right_panel_origin.times(self.tile_size_pixels);
         self.top_panel_origin_pixels = self.top_panel_origin.times(self.tile_size_pixels);
         self.bottom_panel_origin_pixels = self.bottom_panel_origin.times(self.tile_size_pixels);
+
+        self.left_panel_size_pixels = self.left_panel_size.times(self.tile_size_pixels);
+        self.right_panel_size_pixels = self.right_panel_size.times(self.tile_size_pixels);
+        self.top_panel_size_pixels = self.top_panel_size.times(self.tile_size_pixels);
+        self.bottom_panel_size_pixels = self.bottom_panel_size.times(self.tile_size_pixels);
     }
 
     fn new(tile_size_pixels: Vector, window_size: Vector, screen_size: Vector, screen_origin: Vector) -> ScreenLayout {
@@ -73,6 +88,16 @@ impl ScreenLayout {
             right_panel_origin_pixels: Vector::new(0, 0),
             top_panel_origin_pixels: Vector::new(0, 0),
             bottom_panel_origin_pixels: Vector::new(0, 0),
+
+            left_panel_size: Vector::new(screen_origin.x, window_size.y),
+            right_panel_size: Vector::new(window_size.x - screen_origin.x - screen_size.x, window_size.y),
+            top_panel_size: Vector::new(screen_size.x - 2.0 * screen_origin.x, screen_origin.y),
+            bottom_panel_size: Vector::new(screen_size.x - 2.0 * screen_origin.x, screen_origin.y + screen_size.y),
+
+            left_panel_size_pixels: Vector::new(0, 0), 
+            right_panel_size_pixels: Vector::new(0, 0),
+            top_panel_size_pixels: Vector::new(0, 0),
+            bottom_panel_size_pixels: Vector::new(0, 0),
 
             left_margin: screen_origin.x,
             right_margin: window_size.x - screen_origin.x - screen_size.x,
@@ -113,6 +138,7 @@ fn generate_entities(ecs: &mut World) {
     .with(components::RandomMover{})
     .with(components::Monster{})
     .with(components::Viewshed{ visible_tiles : Vec::new(), range : 8, dirty: true })
+    .with(components::Name{ name: "Protogoblin".to_string() })
     .build();
 }
 
@@ -251,6 +277,7 @@ fn register_components(ecs: &mut World) {
     ecs.register::<components::Tile>();
     ecs.register::<components::Monster>();
     ecs.register::<components::Viewshed>();
+    ecs.register::<components::Name>();
 }
 
 fn run_systems(ecs: &mut World) {
@@ -330,6 +357,27 @@ impl State for Game {
     /// Draw stuff on the screen
     fn draw(&mut self, window: &mut Window) -> Result<()> {
         window.clear(Color::WHITE)?;
+
+        let line_end = Vector::new(self.screen_layout.right_panel_origin_pixels.x, self.screen_layout.right_panel_origin_pixels.y + self.screen_layout.window_size.times(self.screen_layout.tile_size_pixels).y);
+
+        window.draw_ex(
+            &Line::new(self.screen_layout.right_panel_origin_pixels, line_end).with_thickness(2.0),
+            Col(Color::WHITE),
+            Transform::IDENTITY,
+            5
+        );
+
+        let line_end_2 = Vector::new(self.screen_layout.right_panel_origin_pixels.x, self.screen_layout.bottom_panel_origin_pixels.y); 
+
+        window.draw_ex(
+            &Line::new(self.screen_layout.bottom_panel_origin_pixels, line_end_2).with_thickness(2.0),
+            Col(Color::WHITE),
+            Transform::IDENTITY,
+            5
+        );
+
+        window.draw(&Rectangle::new(self.screen_layout.bottom_panel_origin_pixels, self.screen_layout.bottom_panel_size_pixels), Col(Color::BLACK));
+        window.draw(&Rectangle::new(self.screen_layout.right_panel_origin_pixels, self.screen_layout.right_panel_size_pixels), Col(Color::BLACK));
 
         render_text(window, "Test title", self.screen_layout.top_panel_origin_pixels, 40.0)?;
         render_text(window, "From function!", self.screen_layout.bottom_panel_origin_pixels, 20.0)?;

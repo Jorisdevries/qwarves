@@ -8,6 +8,11 @@ pub struct PlayerPosition {
     pub y: i32
 }
 
+#[derive(Component, Debug)]
+pub struct Name {
+    pub name : String
+}
+
 #[derive(Component)]
 pub struct Position {
     pub x: i32,
