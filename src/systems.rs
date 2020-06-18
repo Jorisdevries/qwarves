@@ -38,21 +38,25 @@ impl<'a> System<'a> for MonsterAI {
         for (viewshed, _monster, name, mut pos) in (&mut viewshed, &monster, &name, &mut position).join() {
             for i in &viewshed.visible_tiles {
                 if i.x == player_pos.x && i.x == player_pos.x {
-                    println!("{} shouts insults", name.name);
-                    break;
+                    let distance = rltk::DistanceAlg::Pythagoras.distance2d(rltk::Point::new(pos.x, pos.y), rltk::Point::new(player_pos.x, player_pos.y));
+
+                    if distance < 1.5 {
+                        println!("{} shouts insults", name.name);
+                    }
+
+                    let path = rltk::a_star_search(
+                        map.point2d_to_index(rltk::Point::new(pos.x, pos.y)) as i32,
+                        map.point2d_to_index(rltk::Point::new(player_pos.x, player_pos.y)) as i32,
+                        &mut *map
+                    );
+                    if path.success && path.steps.len()>1 {
+                        pos.x = path.steps[1] as i32 % map.width;
+                        pos.y = path.steps[1] as i32 / map.width;
+                        viewshed.dirty = true;
+                    }
                 }
             }
 
-            let path = rltk::a_star_search(
-                map.point2d_to_index(rltk::Point::new(pos.x, pos.y)) as i32,
-                map.point2d_to_index(rltk::Point::new(player_pos.x, player_pos.y)) as i32,
-                &mut *map
-            );
-            if path.success && path.steps.len()>1 {
-                pos.x = path.steps[1] as i32 % map.width;
-                pos.y = path.steps[1] as i32 / map.width;
-                viewshed.dirty = true;
-            }
         }
     }
 }
@@ -109,7 +113,26 @@ impl<'a> System<'a> for GlyphMapper {
             let index = map.point2d_to_index(coords);
 
             let glyph = renderable.glyph;
-            *map.glyph_map.get_mut(&index).unwrap() = glyph;
+            map.glyph_map[index] = glyph;
+        }
+    }
+}
+
+pub struct MapIndexingSystem {}
+
+impl<'a> System<'a> for MapIndexingSystem {
+    type SystemData = ( WriteExpect<'a, map::Map>,
+                        ReadStorage<'a, components::Position>,
+                        ReadStorage<'a, components::BlocksTile>);
+
+    fn run(&mut self, data : Self::SystemData) {
+        let (mut map, position, blockers) = data;
+
+        map.populate_blocked();
+
+        for (position, _blocks) in (&position, &blockers).join() {
+            let idx = map.point2d_to_index(rltk::Point::new(position.x, position.y));
+            map.blocked[idx] = true;
         }
     }
 }

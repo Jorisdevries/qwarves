@@ -11,9 +11,10 @@ use crate::components;
 #[derive(Default)]
 pub struct Map {
     pub tiles: HashMap<(i32, i32), Entity>,
-    pub glyph_map: HashMap<usize, char>,
+    pub glyph_map: Vec<char>,
     pub revealed_map: Vec<bool>,
     pub visible_map: Vec<bool>,
+    pub blocked : Vec<bool>,
     pub index_to_position_map: HashMap<usize, (i32, i32)>,
     pub position_to_index_map: HashMap<(i32, i32), usize>,
     pub width: i32,
@@ -24,13 +25,20 @@ impl Map {
     pub fn new(width: i32, height: i32) -> Map {
         Map {
             tiles: HashMap::new(),
-            glyph_map: HashMap::new(),
+            glyph_map: vec!['?'; (width * height) as usize],
             revealed_map: vec![false; (width * height) as usize],
             visible_map: vec![false; (width * height) as usize],
+            blocked: vec![false; (width * height) as usize],
             index_to_position_map: HashMap::new(),
             position_to_index_map: HashMap::new(),
             width: width,
             height: height
+        }
+    }
+
+    pub fn populate_blocked(&mut self) {
+        for (i, tile) in self.glyph_map.iter_mut().enumerate() {
+            self.blocked[i] = *tile == '#';
         }
     }
 
@@ -40,13 +48,13 @@ impl Map {
         }
 
         let idx = self.position_to_index_map[&(x, y)];
-        self.glyph_map[&idx] != '#'
+        !self.blocked[idx]
     }
 }
 
 impl BaseMap for Map {
     fn is_opaque(&self, idx: usize) -> bool {
-        self.glyph_map[&idx] == '#' 
+        self.glyph_map[idx] == '#' 
     }
 
     fn get_available_exits(&self, idx:usize) -> Vec<(usize, f32)> {
@@ -124,7 +132,7 @@ pub fn generate_map_new(ecs: &mut World, size: Vector) {
             
             let coords = (x as i32, y as i32);
             map.tiles.insert(coords, tile);
-            map.glyph_map.insert(index, glyph);
+            map.glyph_map[index] = glyph;
 
             map.index_to_position_map.insert(index as usize, coords);
             map.position_to_index_map.insert(coords, index as usize);

@@ -18,8 +18,6 @@ static SCREEN_HEIGHT_TILES: i32 = 23;
 static SCREEN_ORIGIN_X_TILES: i32 = 0;
 static SCREEN_ORIGIN_Y_TILES: i32 = 0;
 
-
-
 #[derive(PartialEq, Copy, Clone)]
 pub enum RunState { Paused, Running }
 
@@ -124,6 +122,7 @@ fn generate_entities(ecs: &mut World) {
     })
     .with(components::Player{})
     .with(components::Viewshed{ visible_tiles : Vec::new(), range : 8, dirty: true })
+    .with(components::BlocksTile{})
     .build();
 
     ecs.insert(components::PlayerPosition { x: 40, y: 25 });
@@ -135,10 +134,10 @@ fn generate_entities(ecs: &mut World) {
         glyph: 'g',
         color: Color::GREEN,
     })
-    .with(components::RandomMover{})
     .with(components::Monster{})
     .with(components::Viewshed{ visible_tiles : Vec::new(), range : 8, dirty: true })
     .with(components::Name{ name: "Protogoblin".to_string() })
+    .with(components::BlocksTile{})
     .build();
 }
 
@@ -278,6 +277,7 @@ fn register_components(ecs: &mut World) {
     ecs.register::<components::Monster>();
     ecs.register::<components::Viewshed>();
     ecs.register::<components::Name>();
+    ecs.register::<components::BlocksTile>();
 }
 
 fn run_systems(ecs: &mut World) {
@@ -289,6 +289,8 @@ fn run_systems(ecs: &mut World) {
     vis.run_now(ecs);
     let mut gm = systems::GlyphMapper{};
     gm.run_now(ecs);
+    let mut mapindex = systems::MapIndexingSystem{};
+    mapindex.run_now(ecs);
 
     ecs.maintain();
 }
