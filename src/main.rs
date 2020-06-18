@@ -142,15 +142,15 @@ fn generate_entities(ecs: &mut World) {
     .build();
 }
 
-fn render_text(window: &mut Window, text: &'static str, position: Vector, font_size: f32) -> Result<()> {
-    let mut test_draw = Asset::new(Font::load("Cascadia.ttf").and_then(move |font| {
+fn render_text(window: &mut Window, text: &'static str, position: Vector, font_size: f32, colour: Color) -> Result<()> {
+    let mut to_draw = Asset::new(Font::load("Cascadia.ttf").and_then(move |font| {
         font.render(
             text,
-            &FontStyle::new(font_size, Color::BLACK),
+            &FontStyle::new(font_size, colour),
         )
     }));
 
-    test_draw.execute(|image| {
+    to_draw.execute(|image| {
         window.draw(
             &image
                 .area()
@@ -379,11 +379,10 @@ impl State for Game {
         window.draw(&Rectangle::new(self.screen_layout.bottom_panel_origin_pixels, self.screen_layout.bottom_panel_size_pixels), Col(Color::BLACK));
         window.draw(&Rectangle::new(self.screen_layout.right_panel_origin_pixels, self.screen_layout.right_panel_size_pixels), Col(Color::BLACK));
 
-        render_text(window, "Test title", self.screen_layout.top_panel_origin_pixels, 40.0)?;
-        render_text(window, "From function!", self.screen_layout.bottom_panel_origin_pixels, 20.0)?;
+        render_text(window, "From function!", self.screen_layout.bottom_panel_origin_pixels, 20.0, Color::WHITE)?;
 
         if self.runstate == RunState::Paused {
-            render_text(window, "Paused", self.screen_layout.right_panel_origin_pixels, 20.0)?;
+            render_text(window, "Paused", self.screen_layout.right_panel_origin_pixels, 20.0, Color::WHITE)?;
         }
 
         let positions = self.ecs.read_storage::<components::Position>();

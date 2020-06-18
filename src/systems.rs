@@ -25,20 +25,33 @@ impl<'a> System<'a> for components::RandomMover {
 pub struct MonsterAI {}
 
 impl<'a> System<'a> for MonsterAI {
-    type SystemData = ( ReadExpect<'a, components::PlayerPosition>,
-                        ReadStorage<'a, components::Viewshed>,
+    type SystemData = ( WriteExpect<'a, map::Map>,
+                        ReadExpect<'a, components::PlayerPosition>,
+                        WriteStorage<'a, components::Viewshed>,
                         ReadStorage<'a, components::Monster>,
-                        ReadStorage<'a, components::Name>);
+                        ReadStorage<'a, components::Name>,
+                        WriteStorage<'a, components::Position>);
 
     fn run(&mut self, data : Self::SystemData) {
-        let (player_pos, viewshed, monster, name) = data;
+        let (mut map, player_pos, mut viewshed, monster, name, mut position) = data;
 
-        for (viewshed, _monster, name) in (&viewshed, &monster, &name).join() {
+        for (viewshed, _monster, name, mut pos) in (&mut viewshed, &monster, &name, &mut position).join() {
             for i in &viewshed.visible_tiles {
                 if i.x == player_pos.x && i.x == player_pos.x {
                     println!("{} shouts insults", name.name);
                     break;
                 }
+            }
+
+            let path = rltk::a_star_search(
+                map.point2d_to_index(rltk::Point::new(pos.x, pos.y)) as i32,
+                map.point2d_to_index(rltk::Point::new(player_pos.x, player_pos.y)) as i32,
+                &mut *map
+            );
+            if path.success && path.steps.len()>1 {
+                pos.x = path.steps[1] as i32 % map.width;
+                pos.y = path.steps[1] as i32 / map.width;
+                viewshed.dirty = true;
             }
         }
     }
