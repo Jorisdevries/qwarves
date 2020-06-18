@@ -3,6 +3,11 @@ use quicksilver::prelude::*;
 use specs::prelude::*;
 use specs_derive::Component;
 
+pub struct PlayerPosition {
+    pub x: i32,
+    pub y: i32
+}
+
 #[derive(Component)]
 pub struct Position {
     pub x: i32,

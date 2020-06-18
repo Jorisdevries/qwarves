@@ -37,7 +37,7 @@ impl Map {
 
 impl BaseMap for Map {
     fn is_opaque(&self, idx: usize) -> bool {
-        self.glyph_map[&idx] != '.' 
+        self.glyph_map[&idx] == '#' 
     }
 }
 

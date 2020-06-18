@@ -15,13 +15,10 @@ static WINDOW_WIDTH_TILES: i32 = 49;
 static WINDOW_HEIGHT_TILES: i32 = 27;
 static SCREEN_WIDTH_TILES: i32 = 41;
 static SCREEN_HEIGHT_TILES: i32 = 23;
-static SCREEN_ORIGIN_X_TILES: i32 = 4;
-static SCREEN_ORIGIN_Y_TILES: i32 = 2;
+static SCREEN_ORIGIN_X_TILES: i32 = 0;
+static SCREEN_ORIGIN_Y_TILES: i32 = 0;
 
-struct PlayerPosition {
-    x: i32,
-    y: i32
-}
+
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum RunState { Paused, Running }
@@ -104,7 +101,7 @@ fn generate_entities(ecs: &mut World) {
     .with(components::Viewshed{ visible_tiles : Vec::new(), range : 8, dirty: true })
     .build();
 
-    ecs.insert(PlayerPosition { x: 40, y: 25 });
+    ecs.insert(components::PlayerPosition { x: 40, y: 25 });
 
     ecs
     .create_entity()
@@ -115,6 +112,7 @@ fn generate_entities(ecs: &mut World) {
     })
     .with(components::RandomMover{})
     .with(components::Monster{})
+    .with(components::Viewshed{ visible_tiles : Vec::new(), range : 8, dirty: true })
     .build();
 }
 
@@ -203,7 +201,7 @@ fn try_move_player(delta_x: i32, delta_y: i32, ecs: &World) {
         pos.x = cmp::min(map.width - 1, cmp::max(0, pos.x + delta_x));
         pos.y = cmp::min(map.height - 1, cmp::max(0, pos.y + delta_y));
 
-        let mut player_position = ecs.write_resource::<PlayerPosition>();
+        let mut player_position = ecs.write_resource::<components::PlayerPosition>();
         player_position.x = pos.x;
         player_position.y = pos.y;
 
@@ -344,7 +342,7 @@ impl State for Game {
         let renderables = self.ecs.read_storage::<components::Renderable>();
 
         let map = self.ecs.fetch::<map::Map>();
-        let player_pos = self.ecs.fetch::<PlayerPosition>();
+        let player_pos = self.ecs.fetch::<components::PlayerPosition>();
         //println!("{}", Vector::new(player_pos.x, player_pos.y));
 
         let tileset = &mut self.tileset;

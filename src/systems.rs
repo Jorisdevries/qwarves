@@ -1,4 +1,5 @@
 use specs::prelude::*;
+use quicksilver::prelude::*;
 use rand::Rng;
 
 use crate::components;
@@ -24,14 +25,20 @@ impl<'a> System<'a> for components::RandomMover {
 pub struct MonsterAI {}
 
 impl<'a> System<'a> for MonsterAI {
-    type SystemData = ( ReadStorage<'a, components::Position>,
+    type SystemData = ( ReadExpect<'a, components::PlayerPosition>,
+                        ReadStorage<'a, components::Viewshed>,
                         ReadStorage<'a, components::Monster>);
 
     fn run(&mut self, data : Self::SystemData) {
-        let (pos, monster) = data;
+        let (player_pos, viewshed, monster) = data;
 
-        for (_pos, _monster) in (&pos, &monster).join() {
-            //println!("Monster considers their own existence");
+        for (viewshed,_monster) in (&viewshed, &monster).join() {
+            for i in &viewshed.visible_tiles {
+                if i.x == player_pos.x && i.x == player_pos.x {
+                    println!("Monster shouts insults");
+                    break;
+                }
+            }
         }
     }
 }
